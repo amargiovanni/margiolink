@@ -9,16 +9,19 @@ export interface SelectOption {
 }
 
 export interface SelectProps
-  extends Pick<
-    ComponentPropsWithoutRef<"button">,
-    "aria-label" | "aria-invalid" | "aria-describedby"
-  > {
+  extends Pick<ComponentPropsWithoutRef<"button">, "aria-invalid" | "aria-describedby"> {
   value: string;
   onValueChange: (value: string) => void;
   options: SelectOption[];
   id?: string;
   placeholder?: string;
   className?: string;
+  /** Required — Radix's trigger renders a real `<button>` and it needs a
+   *  name from somewhere. When Select sits inside a `Field`, pass the same
+   *  text as the Field's own `label`: a harmless duplicate accessible name
+   *  beats a nameless control, and Select cannot see whether a `Field`
+   *  wraps it. */
+  "aria-label": string;
 }
 
 /** Wraps Radix's Select for listbox keyboard behaviour, typeahead and
@@ -57,7 +60,7 @@ export function Select({
               <RadixSelect.Item
                 key={option.value}
                 value={option.value}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-ink outline-none data-[highlighted]:bg-surface-sunken"
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-ink data-[highlighted]:bg-surface-sunken"
               >
                 <RadixSelect.ItemText>{option.label}</RadixSelect.ItemText>
                 <RadixSelect.ItemIndicator className="ml-auto">

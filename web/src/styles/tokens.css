@@ -73,6 +73,16 @@
     --color-ramp-3: #2a6fb5;
     --color-ramp-4: #1a4e85;
     --color-ramp-5: #0e2f53;
+    /* The dark-mode good/warning/critical values fall below 4.5:1 on this
+       paper surface, so light mode steps them independently rather than
+       inheriting the @theme block's values — the same "stepped, not
+       inverted" treatment surface/ink/accent already get. Ratios measured
+       against #faf7f2. Warning is a burnt orange rather than an amber on
+       purpose: at the accent's hue and lightness it would be
+       indistinguishable from an action. */
+    --color-good: #0f6b4a; /* 6.10:1 on #faf7f2 */
+    --color-warning: #a04b00; /* 5.61:1 */
+    --color-critical: #b3261e; /* 6.12:1 */
   }
 }
 
@@ -101,4 +111,10 @@
   --color-ramp-3: #2a6fb5;
   --color-ramp-4: #1a4e85;
   --color-ramp-5: #0e2f53;
+  /* See the comment beside these in the @media block above — light mode
+     steps good/warning/critical independently rather than inheriting the
+     dark values, which fall below 4.5:1 on this paper surface. */
+  --color-good: #0f6b4a; /* 6.10:1 on #faf7f2 */
+  --color-warning: #a04b00; /* 5.61:1 */
+  --color-critical: #b3261e; /* 6.12:1 */
 }

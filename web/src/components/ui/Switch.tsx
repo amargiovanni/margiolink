@@ -6,10 +6,11 @@ export interface SwitchProps {
   onCheckedChange: (checked: boolean) => void;
   id?: string;
   disabled?: boolean;
-  /** Required when the switch has no associated `<label htmlFor>` — Radix
-   *  renders a real `button[role=switch]`, but that button still needs a
-   *  name from somewhere. */
-  "aria-label"?: string;
+  /** Required — Radix renders a real `button[role=switch]`, and that button
+   *  still needs a name from somewhere. Pass the same text as any visible
+   *  label sitting beside the switch: a harmless duplicate accessible name
+   *  beats a nameless control. */
+  "aria-label": string;
   className?: string;
 }
 

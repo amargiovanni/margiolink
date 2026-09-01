@@ -10,8 +10,10 @@ export interface FieldProps {
   hint?: string;
   error?: string;
   className?: string;
-  /** The control to wire up. Field clones it to add `aria-invalid` and
-   *  `aria-describedby`, so a caller cannot forget either. */
+  /** The control to wire up. Field clones it to add `id`, `aria-invalid` and
+   *  `aria-describedby`, so a caller cannot forget any of the three or drift
+   *  the child's `id` out of sync with the label's `htmlFor` and the
+   *  generated description ids. */
   children: ReactElement<Record<string, unknown>>;
 }
 
@@ -30,6 +32,7 @@ export function Field({ id, label, hint, error, children, className }: FieldProp
 
   const control = isValidElement(children)
     ? cloneElement(children, {
+        id,
         "aria-invalid": error ? true : undefined,
         "aria-describedby": describedBy,
       })

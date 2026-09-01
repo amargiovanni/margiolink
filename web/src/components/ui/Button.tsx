@@ -1,12 +1,13 @@
 import { Loader2 } from "lucide-react";
-import type { ButtonHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { forwardRef } from "react";
 import { cn } from "./cn";
 
 export type ButtonVariant = "primary" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md";
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonBaseProps
+  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children" | "aria-label"> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   /** Sets `aria-busy` and disables the button so assistive technology, not
@@ -14,6 +15,14 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
    *  in flight. */
   loading?: boolean;
 }
+
+/** A button whose visible text is its own accessible name needs nothing
+ *  else. A button whose children are not plain text — an icon, for
+ *  instance — has no visible text to fall back to, so this makes
+ *  `aria-label` a compile error to omit rather than a documented
+ *  convention a call site can forget. */
+export type ButtonProps = ButtonBaseProps &
+  ({ children: string; "aria-label"?: string } | { children: ReactNode; "aria-label": string });
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   primary: "bg-accent text-accent-ink hover:opacity-90",

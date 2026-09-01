@@ -4,6 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 import { Button } from "./Button";
 
 describe("Button", () => {
+  it("renders a real <button> element, not a div with a key handler", () => {
+    render(<Button>Save</Button>);
+    expect(screen.getByRole("button", { name: "Save" }).tagName).toBe("BUTTON");
+  });
+
   it("is a real button so it works from the keyboard", async () => {
     const onClick = vi.fn();
     render(<Button onClick={onClick}>Save</Button>);
