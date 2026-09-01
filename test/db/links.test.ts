@@ -120,9 +120,23 @@ describe("soft delete and restore", () => {
 });
 
 describe("listLinks", () => {
+  let taggedTagId: number;
+  let emptyTagId: number;
+
   beforeEach(async () => {
-    await createLink(env.DB, { slug: "alpha", targetUrl: "https://a.com", title: "Alpha" }, NOW);
-    await createLink(env.DB, { slug: "beta", targetUrl: "https://b.com", title: "Beta" }, NOW + 1);
+    await env.DB.prepare("DELETE FROM link_tags").run();
+    await env.DB.prepare("DELETE FROM tags").run();
+
+    const alpha = await createLink(
+      env.DB,
+      { slug: "alpha", targetUrl: "https://a.com", title: "Alpha" },
+      NOW,
+    );
+    const beta = await createLink(
+      env.DB,
+      { slug: "beta", targetUrl: "https://b.com", title: "Beta" },
+      NOW + 1,
+    );
     const gamma = await createLink(env.DB, { slug: "gamma", targetUrl: "https://c.com" }, NOW + 2);
     await updateLink(env.DB, gamma.id, { isActive: false }, NOW + 2);
     const deleted = await createLink(
@@ -131,6 +145,30 @@ describe("listLinks", () => {
       NOW + 3,
     );
     await softDeleteLink(env.DB, deleted.id, NOW + 3);
+
+    const taggedTag = await env.DB.prepare(
+      "INSERT INTO tags (name, color) VALUES (?, ?) RETURNING id",
+    )
+      .bind("launch", "#fff")
+      .first<{ id: number }>();
+    const emptyTag = await env.DB.prepare(
+      "INSERT INTO tags (name, color) VALUES (?, ?) RETURNING id",
+    )
+      .bind("empty", "#000")
+      .first<{ id: number }>();
+    if (!taggedTag || !emptyTag) throw new Error("Failed to insert tag fixtures");
+    taggedTagId = taggedTag.id;
+    emptyTagId = emptyTag.id;
+
+    await env.DB.prepare("INSERT INTO link_tags (link_id, tag_id) VALUES (?, ?)")
+      .bind(alpha.id, taggedTagId)
+      .run();
+    await env.DB.prepare("INSERT INTO link_tags (link_id, tag_id) VALUES (?, ?)")
+      .bind(beta.id, taggedTagId)
+      .run();
+    await env.DB.prepare("INSERT INTO link_tags (link_id, tag_id) VALUES (?, ?)")
+      .bind(gamma.id, taggedTagId)
+      .run();
   });
 
   it("excludes deleted links by default and sorts newest first", async () => {
@@ -163,5 +201,33 @@ describe("listLinks", () => {
     const page = await listLinks(env.DB, { limit: 2, offset: 1 }, NOW + 10);
     expect(page.items.map((l) => l.slug)).toEqual(["beta", "alpha"]);
     expect(page.total).toBe(3);
+  });
+
+  it("filters by tagId alone", async () => {
+    const { items, total } = await listLinks(env.DB, { tagId: taggedTagId }, NOW + 10);
+    expect(items.map((l) => l.slug)).toEqual(["gamma", "beta", "alpha"]);
+    expect(total).toBe(3);
+  });
+
+  it("combines tagId with search", async () => {
+    const { items } = await listLinks(env.DB, { tagId: taggedTagId, search: "Beta" }, NOW + 10);
+    expect(items.map((l) => l.slug)).toEqual(["beta"]);
+  });
+
+  it("combines tagId with status active", async () => {
+    const { items } = await listLinks(env.DB, { tagId: taggedTagId, status: "active" }, NOW + 10);
+    expect(items.map((l) => l.slug)).toEqual(["beta", "alpha"]);
+  });
+
+  it("combines tagId with limit/offset while reporting the full tagged total", async () => {
+    const page = await listLinks(env.DB, { tagId: taggedTagId, limit: 2, offset: 1 }, NOW + 10);
+    expect(page.items.map((l) => l.slug)).toEqual(["beta", "alpha"]);
+    expect(page.total).toBe(3);
+  });
+
+  it("returns an empty list for a tag with no links", async () => {
+    const { items, total } = await listLinks(env.DB, { tagId: emptyTagId }, NOW + 10);
+    expect(items).toEqual([]);
+    expect(total).toBe(0);
   });
 });
