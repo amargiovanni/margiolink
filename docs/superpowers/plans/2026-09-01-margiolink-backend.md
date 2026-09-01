@@ -1794,7 +1794,7 @@ Expected: PASS.
 
 ```bash
 git add src/lib/request-context.ts test/lib/request-context.test.ts
-git commit -m "feat(analytics): build click context from request geography and parameters"
+git commit -m "feat(analytics): build click context from geography and parameters"
 ```
 
 ---
@@ -3066,7 +3066,7 @@ Expected: all green.
 
 ```bash
 git add -A
-git commit -m "feat(redirect): serve short links with expiry, deactivation and passwords"
+git commit -m "feat(redirect): serve short links with expiry, toggle and passwords"
 ```
 
 ---
@@ -5137,7 +5137,7 @@ Expected: PASS.
 
 ```bash
 git add src/db/stats.ts test/db/stats.test.ts
-git commit -m "feat(stats): add aggregate queries for summary, timeseries and dimensions"
+git commit -m "feat(stats): add aggregate queries for summary, series and dimensions"
 ```
 
 ---
