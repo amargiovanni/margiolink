@@ -12,6 +12,7 @@ import {
   softDeleteLink,
   updateLink,
 } from "../../db/links";
+import { setLinkTags, tagsForLinks } from "../../db/tags";
 import { hashPassword, randomSalt } from "../../lib/crypto";
 import { isReservedSlug, isValidSlugShape, normaliseSlug } from "../../lib/slug";
 import { validateTargetUrl } from "../../lib/url";
@@ -57,6 +58,10 @@ const listSchema = z.object({
   offset: z.coerce.number().int().min(0).optional(),
 });
 
+const assignTagsSchema = z.object({
+  tagIds: z.array(z.number().int().positive()).max(20),
+});
+
 export const links = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
 
 links.use("*", requireSession);
@@ -67,8 +72,16 @@ links.get("/", async (c) => {
 
   const now = Math.floor(Date.now() / 1000);
   const { items, total } = await listLinks(c.env.DB, parsed.data, now);
+  const tagMap = await tagsForLinks(
+    c.env.DB,
+    items.map((l) => l.id),
+  );
+
   return c.json({
-    links: items.map((l) => serialiseLink(l, c.env.SHORT_DOMAIN)),
+    links: items.map((l) => ({
+      ...serialiseLink(l, c.env.SHORT_DOMAIN),
+      tags: tagMap.get(l.id) ?? [],
+    })),
     total,
   });
 });
@@ -130,7 +143,22 @@ links.post("/", async (c) => {
 links.get("/:id", async (c) => {
   const link = await findById(c.env.DB, Number(c.req.param("id")));
   if (!link) return c.json({ error: "not_found" }, 404);
-  return c.json({ link: serialiseLink(link, c.env.SHORT_DOMAIN) });
+
+  const tagMap = await tagsForLinks(c.env.DB, [link.id]);
+  return c.json({
+    link: { ...serialiseLink(link, c.env.SHORT_DOMAIN), tags: tagMap.get(link.id) ?? [] },
+  });
+});
+
+links.put("/:id/tags", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!(await findById(c.env.DB, id))) return c.json({ error: "not_found" }, 404);
+
+  const parsed = assignTagsSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "invalid_body" }, 400);
+
+  await setLinkTags(c.env.DB, id, parsed.data.tagIds);
+  return c.json({ ok: true });
 });
 
 links.patch("/:id", async (c) => {
