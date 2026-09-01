@@ -74,8 +74,42 @@ export async function insertClick(db: D1Database, click: ClickInsert): Promise<v
     .run();
 }
 
+/**
+ * SQL fragment: true when the row's UTC day has at least one `click_daily` row.
+ *
+ * Retention must never delete raw rows for a day the rollup never reached.
+ * `runRollup` only recomputes today and yesterday, so an outage spanning more
+ * than 48 hours leaves days permanently unaggregated — and once their raw rows
+ * are gone there is nothing left to backfill from. Deleting less is always
+ * recoverable; deleting unaggregated data is not.
+ */
+const DAY_WAS_ROLLED_UP = `EXISTS (
+    SELECT 1 FROM click_daily d
+    WHERE d.day = strftime('%Y-%m-%d', clicks.ts, 'unixepoch')
+  )`;
+
+/**
+ * UTC days that have raw rows older than `ts` but no `click_daily` row —
+ * the days retention is declining to delete. Oldest first.
+ */
+export async function unaggregatedDaysBefore(db: D1Database, ts: number): Promise<string[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT DISTINCT strftime('%Y-%m-%d', ts, 'unixepoch') AS day
+       FROM clicks
+       WHERE ts < ? AND NOT ${DAY_WAS_ROLLED_UP}
+       ORDER BY day`,
+    )
+    .bind(ts)
+    .all<{ day: string }>();
+  return results.map((row) => row.day);
+}
+
 export async function deleteClicksBefore(db: D1Database, ts: number): Promise<number> {
-  const result = await db.prepare("DELETE FROM clicks WHERE ts < ?").bind(ts).run();
+  const result = await db
+    .prepare(`DELETE FROM clicks WHERE ts < ? AND ${DAY_WAS_ROLLED_UP}`)
+    .bind(ts)
+    .run();
   return result.meta.changes ?? 0;
 }
 
