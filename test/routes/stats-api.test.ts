@@ -76,6 +76,11 @@ describe("GET /api/stats/timeseries", () => {
     const res = await api(`/api/stats/timeseries?from=${BASE}&to=${BASE + DAY}&granularity=eon`);
     expect(res.status).toBe(400);
   });
+
+  it("rejects a range where from is after to", async () => {
+    const res = await api(`/api/stats/timeseries?from=${BASE + DAY}&to=${BASE}&granularity=hour`);
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("GET /api/stats/dimension", () => {
@@ -100,6 +105,18 @@ describe("GET /api/stats/dimension", () => {
     ).first();
     expect(tables).not.toBeNull();
   });
+
+  it("caps the limit", async () => {
+    const res = await api(
+      `/api/stats/dimension?name=country&from=${BASE}&to=${BASE + DAY}&limit=99999`,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a range where from is after to", async () => {
+    const res = await api(`/api/stats/dimension?name=country&from=${BASE + DAY}&to=${BASE}`);
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("GET /api/stats/live", () => {
@@ -111,6 +128,62 @@ describe("GET /api/stats/live", () => {
     const body = (await res.json()) as { clicks: { slug: string; ts: number }[] };
     expect(body.clicks[0]?.slug).toBe("stats");
     expect(body.clicks[0]?.ts).toBe(BASE + 2);
+  });
+
+  it("maps every field of the most recent click from its own column", async () => {
+    await insertClick(BASE + 1);
+    const inserted = await env.DB.prepare(
+      `INSERT INTO clicks (link_id, ts, visitor_hash, source, outcome, is_bot, country, city, device_type, browser, referrer_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        linkId,
+        BASE + 2,
+        "v-full",
+        "qr",
+        "expired",
+        1,
+        "US",
+        "Chicago",
+        "mobile",
+        "Firefox",
+        "search",
+      )
+      .run();
+    const insertedId = inserted.meta.last_row_id;
+
+    const res = await api("/api/stats/live?limit=10");
+    const body = (await res.json()) as {
+      clicks: {
+        id: number;
+        linkId: number;
+        slug: string;
+        ts: number;
+        country: string;
+        city: string;
+        device: string;
+        browser: string;
+        referrerType: string;
+        source: string;
+        outcome: string;
+        isBot: boolean;
+      }[];
+    };
+
+    expect(body.clicks[0]).toStrictEqual({
+      id: insertedId,
+      linkId,
+      slug: "stats",
+      ts: BASE + 2,
+      country: "US",
+      city: "Chicago",
+      device: "mobile",
+      browser: "Firefox",
+      referrerType: "search",
+      source: "qr",
+      outcome: "expired",
+      isBot: true,
+    });
   });
 
   it("caps the limit", async () => {
@@ -125,5 +198,10 @@ describe("GET /api/stats/sparklines", () => {
     const res = await api("/api/stats/sparklines?days=7");
     const body = (await res.json()) as { series: Record<string, number[]> };
     expect(body.series[String(linkId)]).toHaveLength(7);
+  });
+
+  it("caps the days bound", async () => {
+    const res = await api("/api/stats/sparklines?days=999");
+    expect(res.status).toBe(400);
   });
 });
