@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { runRetention } from "./cron/retention";
 import { runRollup } from "./cron/rollup";
 import { createApiRouter } from "./routes/api";
+import { registerPublicRoutes } from "./routes/public";
 import { registerRedirect } from "./routes/redirect";
 import type { Env } from "./types";
 
@@ -9,6 +10,7 @@ export const app = new Hono<{ Bindings: Env }>();
 
 app.get("/_health", (c) => c.json({ ok: true }));
 app.route("/api", createApiRouter());
+registerPublicRoutes(app);
 
 registerRedirect(app);
 
