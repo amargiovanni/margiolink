@@ -12,8 +12,10 @@ if (!root) throw new Error("#root is missing from index.html");
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // A retried 401 just delays the redirect RequireSession would
-      // otherwise show immediately.
+      // A 401 is terminal, not transient: it means the session cookie is
+      // gone or expired, and no number of retries brings it back. Retrying
+      // it only delays the redirect RequireSession would otherwise show
+      // immediately. Every other failure keeps the default backoff.
       retry: (failureCount, error) => {
         if (error instanceof ApiError && error.status === 401) return false;
         return failureCount < 3;
