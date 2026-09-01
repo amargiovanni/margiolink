@@ -13,6 +13,7 @@ node_modules/
 dist/
 build/
 .wrangler/
+web/dist/
 
 # Editor / OS
 .DS_Store

@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Fraunces Variable", Georgia, serif;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+
+  --color-surface: #12100e;
+  --color-surface-raised: #1a1714;
+  --color-surface-sunken: #0c0a09;
+  --color-rule: #2c2823;
+  --color-ink: #f6f2ea;
+  --color-ink-muted: #a8a094;
+  --color-ink-faint: #6f675c;
+
+  --color-accent: #d89b2e;
+  --color-accent-ink: #12100e;
+
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+  --color-series-4: #c98500;
+  --color-series-5: #d55181;
+  --color-series-6: #008300;
+  --color-series-7: #9085e9;
+  --color-series-8: #e66767;
+
+  --color-ramp-1: #1e4d7e;
+  --color-ramp-2: #3670ae;
+  --color-ramp-3: #5c95ce;
+  --color-ramp-4: #8cb9e2;
+  --color-ramp-5: #bbd7f0;
+
+  --color-good: #199e70;
+  --color-warning: #c98500;
+  --color-critical: #e66767;
+}
+
+/* Light is a separately stepped alternative, not an inversion. Both the OS
+   setting and the explicit toggle must win, which is why the values appear
+   under two scopes. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --color-surface: #faf7f2;
+    --color-surface-raised: #ffffff;
+    --color-surface-sunken: #f1ece3;
+    --color-rule: #ddd6c9;
+    --color-ink: #1b1814;
+    --color-ink-muted: #5f574c;
+    --color-ink-faint: #8c8479;
+    --color-accent: #8a5e12;
+    --color-accent-ink: #ffffff;
+    --color-series-1: #2a78d6;
+    --color-series-2: #eb6834;
+    --color-series-3: #1baf7a;
+    --color-series-4: #eda100;
+    --color-series-5: #e87ba4;
+    --color-series-6: #008300;
+    --color-series-7: #4a3aa7;
+    --color-series-8: #e34948;
+    --color-ramp-1: #7fadd8;
+    --color-ramp-2: #4e8fcb;
+    --color-ramp-3: #2a6fb5;
+    --color-ramp-4: #1a4e85;
+    --color-ramp-5: #0e2f53;
+  }
+}
+
+:root[data-theme="light"] {
+  --color-surface: #faf7f2;
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: #f1ece3;
+  --color-rule: #ddd6c9;
+  --color-ink: #1b1814;
+  --color-ink-muted: #5f574c;
+  --color-ink-faint: #8c8479;
+  --color-accent: #8a5e12;
+  --color-accent-ink: #ffffff;
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+  --color-series-4: #eda100;
+  --color-series-5: #e87ba4;
+  --color-series-6: #008300;
+  --color-series-7: #4a3aa7;
+  --color-series-8: #e34948;
+  --color-ramp-1: #7fadd8;
+  --color-ramp-2: #4e8fcb;
+  --color-ramp-3: #2a6fb5;
+  --color-ramp-4: #1a4e85;
+  --color-ramp-5: #0e2f53;
+}

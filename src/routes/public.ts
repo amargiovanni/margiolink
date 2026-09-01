@@ -59,6 +59,14 @@ question about this notice, contact the operator of ${domain}.</p>
 }
 
 export function registerPublicRoutes(app: Hono<{ Bindings: Env }>): void {
+  // The dashboard shell. Vite writes index.html to the asset root, so it is
+  // fetched by that path rather than by the /app URL the visitor requested.
+  const shell = (c: { env: Env; req: { url: string } }) =>
+    c.env.ASSETS.fetch(new Request(new URL("/index.html", c.req.url)));
+
+  app.get("/app", (c) => shell(c));
+  app.get("/app/*", (c) => shell(c));
+
   app.get("/privacy", (c) => c.html(privacyHtml(c.env.RAW_RETENTION_DAYS, c.env.SHORT_DOMAIN)));
 
   app.get("/robots.txt", (c) =>

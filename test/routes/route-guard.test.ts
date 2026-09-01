@@ -22,13 +22,17 @@ const EXPECTED_SESSION_MIDDLEWARE_PATHS = ["/api/*", "/api/links/*", "/api/tags/
 
 /**
  * Every route outside `/api`, all of them intentionally reachable without a
- * session: the health probe, the public privacy notice, the robots policy and
- * the two redirect handlers. Adding a fourth public path — or an authenticated
- * route mounted outside `/api`, such as the CSV export the Settings screen
- * calls for — fails here until it is accounted for.
+ * session: the health probe, the dashboard shell, the public privacy notice,
+ * the robots policy and the two redirect handlers. The shell itself is public
+ * by design — it is static markup, and the API it calls stays behind
+ * `requireSession`. Adding another public path — or an authenticated route
+ * mounted outside `/api`, such as the CSV export the Settings screen calls
+ * for — fails here until it is accounted for.
  */
 const EXPECTED_PUBLIC_NON_API_ROUTES = [
   "GET /_health",
+  "GET /app",
+  "GET /app/*",
   "GET /privacy",
   "GET /robots.txt",
   "GET /.well-known/security.txt",

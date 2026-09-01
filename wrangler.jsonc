@@ -20,6 +20,10 @@
       "migrations_dir": "migrations"
     }
   ],
+  "assets": {
+    "directory": "./web/dist",
+    "binding": "ASSETS"
+  },
   "triggers": {
     "crons": ["0 * * * *", "30 3 * * *"]
   },

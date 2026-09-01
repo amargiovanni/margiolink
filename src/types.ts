@@ -1,5 +1,6 @@
 export interface Env {
   DB: D1Database;
+  ASSETS: Fetcher;
   ADMIN_USER: string;
   ADMIN_PASSWORD: string;
   // Typed as possibly absent on purpose: a deploy that never ran
