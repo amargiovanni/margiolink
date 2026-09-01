@@ -24,6 +24,17 @@ describe("granularityFor", () => {
   it("never returns hour for a range that would exceed a readable column count", () => {
     expect(granularityFor(0, 3 * DAY)).not.toBe("hour");
   });
+
+  // The inherited gap the reviewer found: the switch from hourly to daily
+  // happens at exactly two days, and neither side of that boundary was
+  // pinned by a test.
+  it("stays hourly at exactly the two-day boundary", () => {
+    expect(granularityFor(0, 2 * DAY)).toBe("hour");
+  });
+
+  it("switches to daily one second past the two-day boundary", () => {
+    expect(granularityFor(0, 2 * DAY + 1)).toBe("day");
+  });
 });
 
 describe("rangeFor", () => {
