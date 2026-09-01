@@ -177,6 +177,24 @@ describe("listLinks", () => {
     expect(total).toBe(3);
   });
 
+  it("breaks a created_at tie by id, so the later insert still sorts first", async () => {
+    const first = await createLink(
+      env.DB,
+      { slug: "tie-first", targetUrl: "https://tie1.com" },
+      NOW + 4,
+    );
+    const second = await createLink(
+      env.DB,
+      { slug: "tie-second", targetUrl: "https://tie2.com" },
+      NOW + 4,
+    );
+    expect(second.created_at).toBe(first.created_at);
+
+    const { items } = await listLinks(env.DB, {}, NOW + 10);
+    const tieSlugs = items.filter((l) => l.slug.startsWith("tie-")).map((l) => l.slug);
+    expect(tieSlugs).toEqual(["tie-second", "tie-first"]);
+  });
+
   it("filters to active links", async () => {
     const { items } = await listLinks(env.DB, { status: "active" }, NOW + 10);
     expect(items.map((l) => l.slug)).toEqual(["beta", "alpha"]);
