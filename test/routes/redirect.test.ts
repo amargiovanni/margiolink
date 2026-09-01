@@ -236,6 +236,9 @@ describe("the password interstitial is throttled", () => {
     const locked = await submit("guarded", "wrong-again");
     expect(locked.status).toBe(429);
     expect(locked.headers.get("retry-after")).toMatch(/^\d+$/);
+    // A throttled caller is told they were throttled, not that the password
+    // they submitted was wrong — the request was never verified.
+    expect(await locked.text()).toContain("Too many attempts");
   });
 
   it("refuses even the correct password while the throttle is tripped", async () => {

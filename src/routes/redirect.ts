@@ -59,12 +59,19 @@ button { width: 100%; margin-top: 16px; padding: 11px; font-size: 1rem; font-wei
  * HTML, and taking it from the row keeps the reason it is safe local to this
  * file instead of resting on `findBySlug` having matched.
  */
-function passwordPage(slug: string, error: boolean): string {
+function passwordPage(slug: string, error: "wrong" | "throttled" | null): string {
+  const message =
+    error === "wrong"
+      ? "Wrong password. Try again."
+      : error === "throttled"
+        ? "Too many attempts. Try again in a few minutes."
+        : null;
+
   return page(
     "Password required",
     `<h1>This link is protected</h1>
      <p>Enter the password to continue.</p>
-     ${error ? '<p class="error" role="alert">Wrong password. Try again.</p>' : ""}
+     ${message ? `<p class="error" role="alert">${escapeHtml(message)}</p>` : ""}
      <form method="post" action="/${escapeHtml(slug)}">
        <label for="password">Password</label>
        <input id="password" name="password" type="password" autocomplete="current-password"
@@ -136,7 +143,7 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
       const allowed = token ? await verifyLinkToken(secret, slug, token, now) : false;
       if (!allowed) {
         record("password_required");
-        return c.html(passwordPage(link.slug, false), 401);
+        return c.html(passwordPage(link.slug, null), 401);
       }
     }
 
@@ -173,7 +180,7 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
       // `password_failed` rather than a new outcome value: the schema's set is
       // consumed by the dashboard, and this is a failed password attempt.
       recordFailure();
-      return c.html(passwordPage(link.slug, true), 429, {
+      return c.html(passwordPage(link.slug, "throttled"), 429, {
         "retry-after": String(limit.retryAfter),
       });
     }
@@ -186,7 +193,7 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
     if (!correct) {
       await registerLoginFailure(c.env.DB, throttleKey, now);
       recordFailure();
-      return c.html(passwordPage(link.slug, true), 401);
+      return c.html(passwordPage(link.slug, "wrong"), 401);
     }
 
     await clearLoginFailures(c.env.DB, throttleKey);
