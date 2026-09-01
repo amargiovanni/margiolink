@@ -31,6 +31,7 @@ const EXPECTED_PUBLIC_NON_API_ROUTES = [
   "GET /_health",
   "GET /privacy",
   "GET /robots.txt",
+  "GET /.well-known/security.txt",
   "GET /:slug",
   "POST /:slug",
 ];

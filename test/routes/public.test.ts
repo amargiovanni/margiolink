@@ -34,3 +34,35 @@ describe("GET /robots.txt", () => {
     expect(await res.text()).toContain("Disallow: /");
   });
 });
+
+describe("GET /.well-known/security.txt", () => {
+  it("is publicly reachable as plain text", async () => {
+    const res = await SELF.fetch("https://link.test/.well-known/security.txt");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/plain");
+  });
+
+  it("carries the two fields RFC 9116 requires", async () => {
+    const body = await (await SELF.fetch("https://link.test/.well-known/security.txt")).text();
+    expect(body).toMatch(/^Contact: \S+/m);
+    expect(body).toMatch(/^Expires: \S+/m);
+  });
+
+  it("has not expired", async () => {
+    const body = await (await SELF.fetch("https://link.test/.well-known/security.txt")).text();
+    const expires = body.match(/^Expires: (\S+)/m)?.[1];
+    expect(expires).toBeDefined();
+    expect(Date.parse(expires as string)).toBeGreaterThan(Date.now());
+  });
+
+  it("points at the published policy and the deployment's own canonical URL", async () => {
+    const body = await (await SELF.fetch("https://link.test/.well-known/security.txt")).text();
+    expect(body).toContain("SECURITY.md");
+    expect(body).toContain("Canonical: https://link.test/.well-known/security.txt");
+  });
+
+  it("does not collide with the single-segment slug route", async () => {
+    const res = await SELF.fetch("https://link.test/.well-known/security.txt");
+    expect(res.status).not.toBe(404);
+  });
+});

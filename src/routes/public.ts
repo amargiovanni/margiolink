@@ -64,4 +64,27 @@ export function registerPublicRoutes(app: Hono<{ Bindings: Env }>): void {
   app.get("/robots.txt", (c) =>
     c.text("User-agent: *\nDisallow: /\n", 200, { "content-type": "text/plain; charset=utf-8" }),
   );
+
+  // RFC 9116. The CRA's Annex I Part II requires a coordinated vulnerability
+  // disclosure policy; this is its machine-readable pointer, and SECURITY.md is
+  // the policy itself.
+  //
+  // `Expires` is deliberately a fixed date rather than one computed at request
+  // time. A date that renews itself never expires, which is exactly what the
+  // field exists to prevent — a stale file that still claims to be current.
+  // Refresh it when the policy is reviewed.
+  app.get("/.well-known/security.txt", (c) =>
+    c.text(
+      [
+        "Contact: https://github.com/amargiovanni/margiolink/security/advisories/new",
+        "Expires: 2027-09-01T00:00:00.000Z",
+        "Policy: https://github.com/amargiovanni/margiolink/blob/main/SECURITY.md",
+        "Preferred-Languages: en, it",
+        `Canonical: https://${c.env.SHORT_DOMAIN}/.well-known/security.txt`,
+        "",
+      ].join("\n"),
+      200,
+      { "content-type": "text/plain; charset=utf-8" },
+    ),
+  );
 }
