@@ -24,18 +24,22 @@ strong { color: var(--fg); }
 <p>This page explains what ${domain} records when you follow a short link.</p>
 
 <h2>What is recorded</h2>
-<p>When a short link is opened we record the time, the country, region and city
-your request was routed from, your network operator, the type of device,
-operating system and browser, your preferred language, the site that referred
-you, and any campaign parameters in the link.</p>
+<p>When a short link is opened we record the time, the country, region, city
+and time zone your request was routed from, which datacenter served the
+request, your network operator, the type of device, operating system and
+browser, your preferred language, the site that referred you, and any
+campaign parameters in the link.</p>
 
 <h2>What is not recorded</h2>
 <p><strong>Your IP address is never stored</strong>, in any form, and neither is
 your full browser user-agent string. To tell one visitor from another without
 identifying anyone, a short code is derived from your IP address, browser and
-the link, using a key that changes every day. <strong>After 24 hours the same
-visitor produces a different code</strong>, so activity cannot be linked across
-days. No tracking cookie is set.</p>
+the link, using a key that changes at midnight UTC. <strong>In the worst case,
+a visitor's code changes within 24 hours</strong>, so activity cannot be linked
+across days. No tracking cookie is set, and the only cookie a visitor may
+receive is a short-lived, strictly necessary one that remembers they entered
+the correct password for a protected link — it lasts ten minutes, is scoped to
+that link alone, and is not used for measurement.</p>
 
 <h2>Why</h2>
 <p>The legal basis is <strong>legitimate interest</strong> under Article 6(1)(f)

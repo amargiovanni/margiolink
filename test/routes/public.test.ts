@@ -19,6 +19,12 @@ describe("GET /privacy", () => {
     const body = await (await SELF.fetch("https://link.test/privacy")).text();
     expect(body).toContain('<html lang="en">');
   });
+
+  it("discloses the password-gate cookie", async () => {
+    const body = await (await SELF.fetch("https://link.test/privacy")).text();
+    expect(body).toMatch(/password/i);
+    expect(body).toContain("ten minutes");
+  });
 });
 
 describe("GET /robots.txt", () => {
