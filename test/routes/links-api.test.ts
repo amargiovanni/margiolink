@@ -147,6 +147,45 @@ describe("PATCH and DELETE", () => {
     });
   });
 
+  it("rejects an unsupported protocol on update", async () => {
+    const id = await createOne();
+    const res = await api(`/api/links/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ targetUrl: "javascript:alert(1)" }),
+    });
+    expect(res.status).toBe(422);
+    expect((await res.json()) as unknown).toMatchObject({ error: "unsupported_protocol" });
+  });
+
+  it("rejects a self-referencing destination on update", async () => {
+    const id = await createOne();
+    const res = await api(`/api/links/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ targetUrl: "https://link.test/loop" }),
+    });
+    expect(res.status).toBe(422);
+    expect((await res.json()) as unknown).toMatchObject({ error: "self_reference" });
+  });
+
+  it("rejects an invalid expired-url fallback on update", async () => {
+    const id = await createOne();
+    const res = await api(`/api/links/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ expiredUrl: "javascript:alert(1)" }),
+    });
+    expect(res.status).toBe(422);
+    expect((await res.json()) as unknown).toMatchObject({ error: "invalid_expired_url" });
+  });
+
+  it("rejects an invalid expired-url fallback on create", async () => {
+    const res = await api("/api/links", {
+      method: "POST",
+      body: JSON.stringify({ targetUrl: "https://example.com", expiredUrl: "not a url" }),
+    });
+    expect(res.status).toBe(422);
+    expect((await res.json()) as unknown).toMatchObject({ error: "invalid_expired_url" });
+  });
+
   it("deactivates a link", async () => {
     const id = await createOne();
     await api(`/api/links/${id}`, { method: "PATCH", body: JSON.stringify({ isActive: false }) });

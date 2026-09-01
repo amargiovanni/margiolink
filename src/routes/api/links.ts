@@ -90,7 +90,7 @@ links.post("/", async (c) => {
   }
 
   let expiredUrl: string | null = null;
-  if (input.expiredUrl) {
+  if (input.expiredUrl !== undefined && input.expiredUrl !== null) {
     const fallback = validateTargetUrl(input.expiredUrl, c.env.SHORT_DOMAIN);
     if (!fallback.ok) return c.json({ error: "invalid_expired_url" }, 422);
     expiredUrl = fallback.url;
