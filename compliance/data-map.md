@@ -8,7 +8,7 @@ not documented here fails, and so does a column left documented here after the
 schema drops it. Only the first cell of each row is read, so a name mentioned
 in prose elsewhere in this file cannot pass a column off as documented.
 
-**Controller:** the operator of link.margio.uk
+**Controller:** Andrea Margiovanni — andrea@margiovanni.it
 **Retention:** 180 days for every row below (`RAW_RETENTION_DAYS` in
 `wrangler.jsonc`), then deletion by `runRetention` in `src/cron/retention.ts`,
 which the `30 3 * * *` cron trigger runs once daily. `click_daily` holds a
@@ -78,7 +78,7 @@ processing activity needs its own record.
 
 | Field | Value |
 | --- | --- |
-| Controller | the operator of link.margio.uk |
+| Controller | Andrea Margiovanni, andrea@margiovanni.it |
 | Purpose | Click analytics for the controller's own short links (§1 of the LIA) |
 | Categories of data subjects | Visitors who follow a short link |
 | Categories of data | Pseudonymous visitor identifier, timestamp, coarse geography, device/browser, referrer, campaign parameters — see the `clicks` table above |
