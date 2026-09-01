@@ -1,6 +1,17 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import * as topojsonClient from "topojson-client";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorldMap } from "./WorldMap";
+
+// Spies on the real `feature()` (still delegating to it) so tests can tell
+// whether the atlas was actually processed, independent of what ends up in
+// the DOM — the map's `<svg>` is also gated on `slices.length > 0`, so a
+// DOM-only assertion can't distinguish "never fetched" from "fetched but
+// not rendered for an unrelated reason".
+vi.mock("topojson-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("topojson-client")>();
+  return { ...actual, feature: vi.fn(actual.feature) };
+});
 
 const slices = [
   { value: "IT", clicks: 120, uniques: 90 },
@@ -8,6 +19,10 @@ const slices = [
 ];
 
 describe("WorldMap", () => {
+  beforeEach(() => {
+    vi.mocked(topojsonClient.feature).mockClear();
+  });
+
   it("always ships the ranked list beside the map, so the data is readable without it", async () => {
     render(<WorldMap slices={slices} />);
     expect(await screen.findByText("IT")).toBeInTheDocument();
@@ -91,5 +106,25 @@ describe("WorldMap", () => {
       return el;
     });
     expect(italy.querySelector("title")?.textContent).toMatch(/italy.*120/i);
+  });
+
+  it("never fetches the atlas when there is nothing to draw", async () => {
+    render(<WorldMap slices={[]} />);
+    // Let any pending microtask/effect settle before asserting a negative.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(topojsonClient.feature).not.toHaveBeenCalled();
+  });
+
+  it("still fetches the atlas once data arrives, even if it first mounted with none", async () => {
+    // Mirrors a parent whose query is still loading on first render: it
+    // passes `slices={[]}` initially, then swaps in the real rows.
+    const { rerender } = render(<WorldMap slices={[]} />);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(topojsonClient.feature).not.toHaveBeenCalled();
+
+    rerender(<WorldMap slices={slices} />);
+    await waitFor(() => {
+      expect(topojsonClient.feature).toHaveBeenCalled();
+    });
   });
 });

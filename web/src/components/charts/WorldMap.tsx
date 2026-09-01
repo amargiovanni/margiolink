@@ -17,13 +17,17 @@ interface CountryPath {
   d: string;
 }
 
+// A `readonly` 5-tuple, not `string[]`: only a tuple's fixed, known length
+// lets TypeScript prove `RAMP[step]` below is in range for every `RampStep`
+// value, rather than the `string | undefined` a plain array type would
+// always yield under `noUncheckedIndexedAccess` regardless of the index.
 const RAMP = [
   "var(--color-ramp-1)",
   "var(--color-ramp-2)",
   "var(--color-ramp-3)",
   "var(--color-ramp-4)",
   "var(--color-ramp-5)",
-];
+] as const;
 
 // The API returns ISO 3166-1 alpha-2 codes ("IT", "FR"); world-atlas keys its
 // topology by ISO 3166-1 numeric codes, zero-padded to three digits as
@@ -39,6 +43,11 @@ const RAMP = [
 // Andorra, don't survive 110m simplification). A code that isn't a key here
 // either isn't a real alpha-2 or names something the atlas can't draw either
 // way, so falling through to "no data" is correct, not a guess.
+//
+// This table itself is never read directly — `clicksFor` below needs the
+// atlas's numeric id pointing back to an alpha-2 code, the opposite
+// direction, so everything downstream reads `numericToAlpha2` (built by
+// inverting this table once, just below it) instead. It is not dead code.
 const alpha2ToNumeric: Record<string, string> = {
   AF: "004",
   AL: "008",
@@ -220,9 +229,41 @@ const numericToAlpha2 = new Map(
   Object.entries(alpha2ToNumeric).map(([alpha2, id]) => [id, alpha2]),
 );
 
+// `geoNaturalEarth1()`'s defaults — `translate([480, 250])`, `scale(175.295)`
+// — are themselves defined to fit a 960×500 canvas, which is why VIEW_BOX
+// below is exactly that and not some other rectangle. Measured directly:
+// `geoPath(PROJECTION).bounds({ type: "Sphere" })` returns
+// `[[0.50, 0.66], [959.50, 499.34]]`, i.e. the whole sphere already sits
+// snugly inside `0 0 960 500` with no `fitSize`/`fitExtent` call needed.
+// VIEW_BOX and the projection are coupled through these two numbers, not
+// independent choices — changing VIEW_BOX alone (without also re-fitting
+// the projection) will silently crop or off-centre the map.
 const PROJECTION = geoNaturalEarth1();
 const PATH = geoPath(PROJECTION);
 const VIEW_BOX = "0 0 960 500";
+
+/** The five ramp steps a mark can land on. Modelled as a literal union
+ *  rather than plain `number` so that indexing the equally-literal `RAMP`
+ *  tuple below is provably in range under `noUncheckedIndexedAccess` — no
+ *  assertion needed, and a bucket computation that ever drifted out of
+ *  [0, 4] would fail to typecheck instead of handing `undefined` to a
+ *  style attribute typed as `string`. */
+type RampStep = 0 | 1 | 2 | 3 | 4;
+
+/** Same five-bucket split as the original `Math.min(4, Math.floor(fraction
+ *  * 5))`, just expressed so every branch returns one of `RampStep`'s own
+ *  literals instead of a general `number` that merely happens to land in
+ *  range: [0, .2) → 0, [.2, .4) → 1, [.4, .6) → 2, [.6, .8) → 3, [.8, 1] → 4
+ *  (the `fraction === 1` edge, when a country holds the period's maximum,
+ *  falls into the last branch exactly like the old formula's `min(4, 5)`
+ *  did). */
+function rampStepFor(fraction: number): RampStep {
+  if (fraction >= 0.8) return 4;
+  if (fraction >= 0.6) return 3;
+  if (fraction >= 0.4) return 2;
+  if (fraction >= 0.2) return 1;
+  return 0;
+}
 
 type CountryTopology = Topology<{ countries: GeometryCollection<{ name: string }> }>;
 
@@ -254,8 +295,20 @@ function toCountryPaths(topologyModule: unknown): CountryPath[] {
  * blocked still gets every number the map would have shown. */
 export function WorldMap({ slices }: { slices: CountrySlice[] }) {
   const [countries, setCountries] = useState<CountryPath[] | null>(null);
+  // There is nothing to colour when `slices` is empty, so there is nothing
+  // worth downloading 40KB of atlas for either. This is the *only* signal
+  // this component has of "is there real data" — `slices` carries no
+  // separate loading flag — so the trap is gating on "empty right now"
+  // rather than "confirmed empty": a parent whose query is still in flight
+  // typically renders `slices={[]}` first and swaps in real rows once they
+  // resolve. Keying the effect on this boolean (not on `slices` itself, and
+  // not on `[]`) means it reruns exactly when that transition happens, so a
+  // component that mounted before data arrived still fetches once it does,
+  // while one that never receives any never fetches at all.
+  const hasData = slices.length > 0;
 
   useEffect(() => {
+    if (!hasData) return;
     let cancelled = false;
     import("world-atlas/countries-110m.json").then((topologyModule) => {
       if (cancelled) return;
@@ -264,7 +317,7 @@ export function WorldMap({ slices }: { slices: CountrySlice[] }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [hasData]);
 
   const byCountry = new Map(slices.map((s) => [s.value, s.clicks]));
   const max = Math.max(...slices.map((s) => s.clicks), 1);
@@ -278,8 +331,7 @@ export function WorldMap({ slices }: { slices: CountrySlice[] }) {
 
   function colorFor(clicks: number): string {
     if (clicks === 0) return "var(--color-surface-sunken)";
-    const step = Math.min(4, Math.floor((clicks / max) * 5));
-    return RAMP[step] as string;
+    return RAMP[rampStepFor(clicks / max)];
   }
 
   return (
