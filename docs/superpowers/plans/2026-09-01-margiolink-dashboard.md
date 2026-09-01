@@ -2617,9 +2617,9 @@ git commit -m "feat(web): add the links list with search and filters"
 ## Task 10: Creating and editing links, and the command palette
 
 **Files:**
-- Create: `web/src/components/links/LinkForm.tsx`, `LinkDialog.tsx`, `TagPicker.tsx`, `CommandPalette.tsx`
-- Modify: `web/src/pages/Links.tsx`, `web/src/components/layout/AppShell.tsx`
-- Test: `web/src/components/links/LinkForm.test.tsx`, `CommandPalette.test.tsx`
+- Create: `web/src/components/links/LinkForm.tsx`, `LinkDialog.tsx`, `TagPicker.tsx`, `CommandPalette.tsx`, `ConfirmDialog.tsx`
+- Modify: `web/src/pages/Links.tsx`, `web/src/components/layout/AppShell.tsx`, `web/src/components/links/LinkRow.tsx`
+- Test: `web/src/components/links/LinkForm.test.tsx`, `CommandPalette.test.tsx`, `LinkRow.test.tsx`
 
 **Interfaces:**
 - Consumes: `useCreateLink`, `useUpdateLink`, `useTags`, `useSetLinkTags` (Task 2); `Dialog`, `Field`, `Button` (Task 4).
@@ -2818,7 +2818,47 @@ describe("CommandPalette", () => {
 
 Built on `cmdk`. Bind both `Meta+K` and `Control+K`, and do not swallow the shortcut when focus is inside a text input where the browser's own behaviour matters. Actions: New link, then one per section, then the most recent links by title so a reader can jump to a detail page by name.
 
-- [ ] **Step 6: Run the tests, then commit**
+- [ ] **Step 6: Reintroduce the row menu in `LinkRow.tsx`, with every item wired**
+
+Task 9 built this menu with four items and no handlers, and it was removed
+rather than shipped inert: Radix's `DropdownMenu.Item disabled` sets
+`aria-disabled` but also passes `focusable: !disabled` into the roving-focus
+group, whose arrow handler cycles only focusable entries — so a disabled item is
+skipped by exactly the interaction an ARIA menu is operated with, showing a
+sighted user a greyed entry while telling a screen-reader user nothing.
+
+**Until this step lands there is no way to edit, deactivate or delete a link
+anywhere in the interface.** That is the reason this step is here and not
+deferred again.
+
+Restore the trigger and four items. Wire each one:
+
+- **Edit** opens `<LinkDialog mode="edit" link={link}>` — the dialog this task
+  already builds.
+- **QR code** navigates to `/links/:id`, where Task 11 renders the panel. Do not
+  build a second QR surface here.
+- **Deactivate / Activate** calls `useUpdateLink` with the flipped `isActive`.
+  This one is reversible in a single click, so it needs no confirmation.
+- **Delete** opens `ConfirmDialog` and only calls `useDeleteLink` on
+  confirmation. It never deletes on the menu click itself.
+
+`ConfirmDialog` wraps the `Dialog` primitive from Task 4: a heading naming the
+exact object being destroyed (the slug, not "this link"), the consequence in one
+sentence, a cancel that is the default focus, and a confirm carrying
+`--color-critical`. Cancel must be what `Escape` and an outside click both do.
+
+An item that is genuinely unavailable to the user later — a permission they lack
+rather than a feature not yet built — must use a plain `aria-disabled="true"`
+passthrough plus `onSelect={(e) => e.preventDefault()}`, keeping it inside the
+roving-focus set. Never Radix's `disabled` prop, for the reason above.
+
+Test in `LinkRow.test.tsx`: Edit opens the dialog in edit mode with the link's
+current values; Deactivate calls the mutation with the flipped flag; **Delete
+does not call the mutation until the confirmation is accepted**, and cancelling
+leaves it uncalled. That third one is the test that matters — write it so it
+fails if the confirmation is bypassed.
+
+- [ ] **Step 7: Run the tests, then commit**
 
 Run: `npm test -- web/src`
 
