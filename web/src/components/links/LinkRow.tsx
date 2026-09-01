@@ -52,8 +52,8 @@ export interface LinkRowProps {
  *  accidental-data-loss trap. Rendering four inert items to "look finished"
  *  was worse than not rendering the menu at all — a later task adds it back
  *  once each item has somewhere real to go. See the comment further below,
- *  at the point the trigger used to sit, for how those tasks should wire
- *  it and why `disabled` isn't the mechanism. */
+ *  at the point the trigger used to sit, for how Task 10 should wire it
+ *  and why `disabled` isn't the mechanism. */
 export function LinkRow({ link, sparkline }: LinkRowProps) {
   const clicks = sparkline?.reduce((sum, value) => sum + value, 0) ?? null;
 
@@ -91,8 +91,10 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
         <CopyButton value={link.shortUrl} label={`Copy short link for ${link.slug}`} />
 
         {/* The action menu (Edit, QR code, Deactivate, Delete) belongs
-         *  here. Task 10 reintroduces it with Edit and QR wired; Task 11
-         *  adds Deactivate and Delete behind a confirmation dialog.
+         *  here. Task 10 reintroduces it with all four items wired: Edit
+         *  opens the link dialog, QR navigates to the detail page, and
+         *  Delete goes through a confirmation dialog rather than firing on
+         *  the menu click.
          *
          *  When an item in that menu is genuinely unavailable rather than
          *  simply not built yet (e.g. Delete when the viewer lacks
@@ -108,7 +110,7 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
          *  an unbuilt feature isn't "unavailable to you", it doesn't
          *  exist yet, and announcing otherwise would tell the user
          *  something false about the product. That's why this menu is
-         *  absent rather than present-and-disabled until Task 10/11 give
+         *  absent rather than present-and-disabled until Task 10 gives
          *  its items somewhere real to go. */}
       </div>
     </div>
