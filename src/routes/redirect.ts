@@ -1,9 +1,10 @@
 import type { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { issueLinkToken, verifyLinkToken } from "../auth/link-token";
+import { checkLoginAllowed, clearLoginFailures, registerLoginFailure } from "../auth/rate-limit";
 import { findBySlug, type LinkRow } from "../db/links";
 import { recordClick } from "../ingest/record-click";
-import { verifyPassword } from "../lib/crypto";
+import { ipHash, verifyPassword } from "../lib/crypto";
 import { buildRequestContext } from "../lib/request-context";
 import { requireHashSecret } from "../lib/secrets";
 import { normaliseSlug } from "../lib/slug";
@@ -79,6 +80,18 @@ function cookieName(slug: string): string {
   return `ml_pw_${slug}`;
 }
 
+/**
+ * Throttle key for a password submission.
+ *
+ * The daily IP hash alone would let failures against one link lock a visitor
+ * out of every other protected link, so the slug is part of the key. It shares
+ * the `login_attempts` table with the admin login; the admin key is
+ * `ipHash(...)` with no suffix, so the two namespaces cannot collide.
+ */
+function passwordThrottleKey(ip: string, slug: string): string {
+  return `${ip}:${slug}`;
+}
+
 export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
   app.get("/:slug", async (c) => {
     // Before anything else, including the lookup: a request whose click cannot
@@ -139,17 +152,38 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
 
     const now = Math.floor(Date.now() / 1000);
     const context = buildRequestContext(c.req.raw);
+    const recordFailure = () =>
+      c.executionCtx.waitUntil(
+        recordClick(c.env, { linkId: link.id, slug, outcome: "password_failed", context, now }),
+      );
+
+    // This endpoint is unauthenticated and every submission costs 100,000
+    // PBKDF2 iterations of Worker CPU, so it is a brute-force oracle and a CPU
+    // amplification vector at once. The throttle is checked before the
+    // verification, so a locked-out caller costs nothing to answer.
+    const throttleKey = passwordThrottleKey(await ipHash(secret, context.ip, now), slug);
+    const limit = await checkLoginAllowed(c.env.DB, throttleKey, now);
+    if (!limit.allowed) {
+      // `password_failed` rather than a new outcome value: the schema's set is
+      // consumed by the dashboard, and this is a failed password attempt.
+      recordFailure();
+      return c.html(passwordPage(slug, true), 429, {
+        "retry-after": String(limit.retryAfter),
+      });
+    }
+
     const body = await c.req.parseBody();
     const submitted = typeof body.password === "string" ? body.password : "";
 
     const correct = await verifyPassword(submitted, link.password_salt, link.password_hash);
 
     if (!correct) {
-      c.executionCtx.waitUntil(
-        recordClick(c.env, { linkId: link.id, slug, outcome: "password_failed", context, now }),
-      );
+      await registerLoginFailure(c.env.DB, throttleKey, now);
+      recordFailure();
       return c.html(passwordPage(slug, true), 401);
     }
+
+    await clearLoginFailures(c.env.DB, throttleKey);
 
     setCookie(c, cookieName(slug), await issueLinkToken(secret, slug, now), {
       path: `/${slug}`,

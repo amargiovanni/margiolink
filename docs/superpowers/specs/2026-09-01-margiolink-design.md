@@ -300,7 +300,12 @@ record are produced with the `gdpr-evidence` skill during implementation.
    Workers equivalent of the project's "every authenticated endpoint has a
    Policy" rule.
 7. **Link passwords** — PBKDF2-SHA256 via WebCrypto (bcrypt is unavailable on
-   Workers), per-link salt, 100k iterations.
+   Workers), per-link salt, 100k iterations. Password submission to
+   `POST /:slug` is throttled on the same `login_attempts` machinery as the
+   admin login, keyed on the daily IP hash **and** the slug so one link's
+   failures cannot lock another out, and answers 429 with `Retry-After` when
+   tripped. Without it the endpoint is an unauthenticated brute-force oracle
+   whose per-attempt cost is 100k PBKDF2 iterations of Worker CPU.
 
 ---
 

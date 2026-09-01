@@ -8,6 +8,7 @@ const NOW_SECONDS = () => Math.floor(Date.now() / 1000);
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM clicks").run();
   await env.DB.prepare("DELETE FROM links").run();
+  await env.DB.prepare("DELETE FROM login_attempts").run();
 });
 
 async function clickRows() {
@@ -184,5 +185,89 @@ describe("password-protected links", () => {
 
     expect(second.status).toBe(302);
     expect(second.headers.get("location")).toBe("https://example.com/private");
+  });
+});
+
+describe("the password interstitial is throttled", () => {
+  async function createProtected(slug: string, password: string) {
+    const salt = randomSalt();
+    return createLink(
+      env.DB,
+      {
+        slug,
+        targetUrl: `https://example.com/${slug}`,
+        passwordSalt: salt,
+        passwordHash: await hashPassword(password, salt),
+      },
+      NOW_SECONDS(),
+    );
+  }
+
+  function submit(slug: string, password: string) {
+    return SELF.fetch(`https://link.test/${slug}`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: `password=${password}`,
+      redirect: "manual",
+    });
+  }
+
+  it("answers 429 with Retry-After once the attempt budget is spent", async () => {
+    await createProtected("guarded", "hunter2");
+
+    const statuses: number[] = [];
+    for (let i = 0; i < 9; i++) {
+      statuses.push((await submit("guarded", `wrong${i}`)).status);
+    }
+
+    // Unauthenticated PBKDF2 at 100k iterations is both a brute-force oracle
+    // and a CPU amplification vector, so attempts must stop being answered.
+    expect(statuses).toContain(429);
+
+    const locked = await submit("guarded", "wrong-again");
+    expect(locked.status).toBe(429);
+    expect(locked.headers.get("retry-after")).toMatch(/^\d+$/);
+  });
+
+  it("refuses even the correct password while the throttle is tripped", async () => {
+    await createProtected("guarded", "hunter2");
+    for (let i = 0; i < 9; i++) await submit("guarded", `wrong${i}`);
+
+    const res = await submit("guarded", "hunter2");
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("records the throttled attempt as password_failed, not a new outcome", async () => {
+    await createProtected("guarded", "hunter2");
+    for (let i = 0; i < 9; i++) await submit("guarded", `wrong${i}`);
+
+    const outcomes = new Set((await clickRows()).map((row) => row.outcome));
+    expect([...outcomes]).toEqual(["password_failed"]);
+  });
+
+  it("does not lock a different link out because of this one's failures", async () => {
+    await createProtected("guarded", "hunter2");
+    await createProtected("other", "hunter2");
+    for (let i = 0; i < 9; i++) await submit("guarded", `wrong${i}`);
+
+    const res = await submit("other", "hunter2");
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("https://example.com/other");
+  });
+
+  it("clears the budget once the correct password is accepted", async () => {
+    await createProtected("guarded", "hunter2");
+    for (let i = 0; i < 4; i++) await submit("guarded", `wrong${i}`);
+
+    expect((await submit("guarded", "hunter2")).status).toBe(302);
+
+    const statuses: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      statuses.push((await submit("guarded", `wrong${i}`)).status);
+    }
+    expect(statuses).not.toContain(429);
   });
 });
