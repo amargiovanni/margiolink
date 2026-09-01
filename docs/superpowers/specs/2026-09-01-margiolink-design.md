@@ -364,6 +364,102 @@ it, and the EAA makes it mandatory for public-facing interfaces.
 
 ---
 
+### 6.3 The design system, and why these values
+
+The dashboard's aesthetic follows from what the product is: an instrument that
+measures carefully and collects little. It reads as an editorial instrument —
+warm near-black paper, hairline rules instead of card borders, generous type,
+and the data given the whole stage. Nothing about it should look like a
+generic analytics panel, because the product is not one.
+
+**Type.** *Fraunces* for display and figures — a variable serif with optical
+sizing and a `wonk` axis, which gives headline numbers a character no
+interface-default grotesque has. *IBM Plex Sans* for interface text, set with
+`font-variant-numeric: tabular-nums` everywhere a number can change, so digits
+do not jitter as values update. Both are self-hosted rather than fetched from a
+font CDN: a product whose defining claim is that it makes no third-party
+request should not make one to render its own dashboard.
+
+**Surfaces.** Dark `#12100E`, light `#FAF7F2`. Both are warm rather than
+neutral, which is what keeps the near-black from reading as a terminal and the
+paper from reading as a spreadsheet. Dark is the default; light is a
+deliberately stepped alternative, not an inversion.
+
+**The data palette is computed, not chosen.** Every value below was run through
+the data-visualization method's validator against these exact surfaces, and the
+report is reproducible:
+
+*Categorical* — eight hues in fixed order, never cycled:
+
+| Slot | Light | Dark |
+| --- | --- | --- |
+| 1 | `#2a78d6` | `#3987e5` |
+| 2 | `#eb6834` | `#d95926` |
+| 3 | `#1baf7a` | `#199e70` |
+| 4 | `#eda100` | `#c98500` |
+| 5 | `#e87ba4` | `#d55181` |
+| 6 | `#008300` | `#008300` |
+| 7 | `#4a3aa7` | `#9085e9` |
+| 8 | `#e34948` | `#e66767` |
+
+Both modes pass the lightness band, the chroma floor, adjacent-pair
+colour-vision separation and the normal-vision floor. Two consequences are
+binding rather than advisory:
+
+- **Light mode carries a contrast warning** — four slots sit below 3:1 against
+  the paper surface. The method's relief rule applies and is not dismissable:
+  every chart using more than one series ships visible direct labels or a table
+  view. The dashboard ships both.
+- **Forms that compare all pairs at once** — the choropleth, any scatter — are
+  capped at three series. Past three the ordering cannot clear the floors for
+  every pair, so the fourth and beyond fold into "Other" or become facets.
+
+*Sequential*, for the hour-by-weekday heatmap and the choropleth — one hue,
+light to dark, validated for monotonic lightness, step gaps and a pale end that
+still reads against the surface:
+
+- Light: `#0E2F53 · #1A4E85 · #2A6FB5 · #4E8FCB · #7FADD8`
+- Dark: `#BBD7F0 · #8CB9E2 · #5C95CE · #3670AE · #1E4D7E`
+
+The ramp is blue in both modes for a computed reason rather than a taste one:
+an amber ramp was tried first, to echo the interface accent, and its pale end
+cannot clear the 2:1 floor against warm paper — pale amber and cream are too
+close in luminance. The validator said so, the ramp changed.
+
+**The accent is amber and never touches data.** `#D89B2E` on dark, `#8A5E12`
+on light, used for buttons, focus rings, the active navigation item and the
+selected period — the places a person acts, never the places a value is
+encoded. Keeping brand colour out of the data channel is what lets the
+categorical palette stay validated.
+
+**Status colours** (good, warning, serious, critical) are reserved, never
+reused as a series, and always ship with an icon and a label rather than
+carrying meaning by colour alone.
+
+### 6.4 What the charts must do
+
+Every chart is built to the method's mark specs rather than to a library's
+defaults, which is why the implementation hand-rolls SVG over `d3-scale` and
+`d3-shape` instead of adopting a charting component library. The specifics that
+are not negotiable:
+
+- Thin marks; 4px rounded ends on bars, anchored to the baseline; 2px lines;
+  markers at least 8px; a 2px surface gap between adjacent or stacked fills.
+- One y-axis. Never two scales on one chart — two measures of different
+  magnitude become two charts or an indexed pair.
+- Colour follows the entity, never its rank: filtering a series out must not
+  repaint the ones that remain.
+- A hover layer by default — crosshair and tooltip on the time series, per-mark
+  tooltip on bars, cells and the map. The only exception is a bare stat tile
+  with no plot.
+- A legend whenever two or more series are present, with direct labels on four
+  or fewer, so identity is never carried by colour alone.
+- A table view reachable from every chart, which is also the relief the light
+  palette's contrast warning requires and the accessible path for anyone who
+  cannot use the visual encoding.
+- Motion respects `prefers-reduced-motion`, and no animation is load-bearing
+  for understanding a value.
+
 ## 7. Technology choices
 
 **Worker:** TypeScript, Hono for routing, Zod for input validation, `bowser`
