@@ -5773,8 +5773,8 @@ npx wrangler dev
 In a second terminal:
 
 ```bash
-curl "http://localhost:8787/__scheduled?cron=0+*+*+*+*"
-curl "http://localhost:8787/__scheduled?cron=30+3+*+*+*"
+curl "http://localhost:8787/cdn-cgi/local/scheduled?cron=0+*+*+*+*"
+curl "http://localhost:8787/cdn-cgi/local/scheduled?cron=30+3+*+*+*"
 ```
 
 Expected: the `wrangler dev` console logs `rollup [...]` and `retention {...}`. Paste both lines into the task's completion note.
