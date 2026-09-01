@@ -12,6 +12,7 @@ import {
   listSessions,
 } from "../../db/sessions";
 import { constantTimeEquals, ipHash } from "../../lib/crypto";
+import { requireHashSecret } from "../../lib/secrets";
 import { parseClient } from "../../lib/ua";
 import type { Env } from "../../types";
 
@@ -23,13 +24,18 @@ const loginSchema = z.object({
 export const publicAuth = new Hono<{ Bindings: Env }>();
 
 publicAuth.post("/auth/login", async (c) => {
+  // The login throttle keys on `ipHash`, so an unusable HASH_SECRET would make
+  // the lockout table keyed on a guessable value. Refuse rather than throttle
+  // on a key an attacker can compute.
+  const secret = requireHashSecret(c.env);
+
   const parsed = loginSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
     return c.json({ error: "invalid_body" }, 400);
   }
 
   const now = Math.floor(Date.now() / 1000);
-  const key = await ipHash(c.env.HASH_SECRET, c.req.header("cf-connecting-ip") ?? "", now);
+  const key = await ipHash(secret, c.req.header("cf-connecting-ip") ?? "", now);
 
   const limit = await checkLoginAllowed(c.env.DB, key, now);
   if (!limit.allowed) {

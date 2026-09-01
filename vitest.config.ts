@@ -12,7 +12,8 @@ export default defineConfig({
           TEST_MIGRATIONS: migrations,
           ADMIN_USER: "admin",
           ADMIN_PASSWORD: "correct-horse-battery-staple",
-          HASH_SECRET: "test-hash-secret-not-a-real-one",
+          // At least MIN_HASH_SECRET_LENGTH (32) characters, like a real one.
+          HASH_SECRET: "test-hash-secret-not-a-real-one-0",
           SHORT_DOMAIN: "link.test",
           RAW_RETENTION_DAYS: "180",
         },

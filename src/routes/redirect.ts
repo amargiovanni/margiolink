@@ -5,6 +5,7 @@ import { findBySlug, type LinkRow } from "../db/links";
 import { recordClick } from "../ingest/record-click";
 import { verifyPassword } from "../lib/crypto";
 import { buildRequestContext } from "../lib/request-context";
+import { requireHashSecret } from "../lib/secrets";
 import { normaliseSlug } from "../lib/slug";
 import type { Env } from "../types";
 
@@ -80,6 +81,11 @@ function cookieName(slug: string): string {
 
 export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
   app.get("/:slug", async (c) => {
+    // Before anything else, including the lookup: a request whose click cannot
+    // be hashed securely, and whose password cookie cannot be trusted, is
+    // refused rather than served with the security and privacy controls off.
+    const secret = requireHashSecret(c.env);
+
     const slug = normaliseSlug(c.req.param("slug"));
     const link = await findBySlug(c.env.DB, slug);
 
@@ -108,7 +114,7 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
 
     if (link.password_hash) {
       const token = getCookie(c, cookieName(slug));
-      const allowed = token ? await verifyLinkToken(c.env.HASH_SECRET, slug, token, now) : false;
+      const allowed = token ? await verifyLinkToken(secret, slug, token, now) : false;
       if (!allowed) {
         record("password_required");
         return c.html(passwordPage(slug, false), 401);
@@ -120,6 +126,10 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
   });
 
   app.post("/:slug", async (c) => {
+    // See the guard in the GET handler above; the same reasoning applies to the
+    // token this handler is about to mint.
+    const secret = requireHashSecret(c.env);
+
     const slug = normaliseSlug(c.req.param("slug"));
     const link = await findBySlug(c.env.DB, slug);
 
@@ -141,7 +151,7 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
       return c.html(passwordPage(slug, true), 401);
     }
 
-    setCookie(c, cookieName(slug), await issueLinkToken(c.env.HASH_SECRET, slug, now), {
+    setCookie(c, cookieName(slug), await issueLinkToken(secret, slug, now), {
       path: `/${slug}`,
       httpOnly: true,
       secure: true,
