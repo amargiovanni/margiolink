@@ -473,11 +473,21 @@ for user-agent fallback parsing, `isbot` for bot detection,
 `ua-parser-js` is deliberately avoided: from v2 it is AGPL-licensed, which is
 not a liability worth taking on for an accessory feature. `bowser` is MIT.
 
-**Dashboard:** React 19, React Router 7, TanStack Query 5, Recharts 3, Radix
-primitives, `cmdk`, `sonner`, `lucide-react`, React Hook Form + Zod,
-`clsx`/`tailwind-merge`, `date-fns`. World map via `d3-geo` +
-`topojson-client` + `world-atlas`, lazy-loaded in a separate chunk (~90KB gzip)
-only when the map enters the viewport.
+**Dashboard:** React 19, React Router 7, TanStack Query 5, Radix primitives,
+`cmdk`, `sonner`, `lucide-react`, React Hook Form + Zod,
+`clsx`/`tailwind-merge`, `date-fns`. Charts are hand-rolled SVG over
+`d3-scale` and `d3-shape` rather than a charting library: §6.4's rules —
+the fixed categorical order, the token-named fills, the 2px surface gap —
+are constraints a chart library fights rather than expresses, and the forms
+this dashboard needs are few enough to own outright.
+
+World map via `d3-geo` + `topojson-client` + `world-atlas`. The atlas is
+imported dynamically from inside the map component, so it lands in its own
+chunk (39.6KB gzip, measured) and no page that never renders a map pays for
+it. It loads when that component mounts, **not** on viewport entry: gating
+on an intersection would buy only the reader who opens Overview and never
+scrolls, at the cost of the map materialising exactly as they arrive at it.
+The ranked country list is not gated on the atlas at all — see §6.4.
 
 **Build and tooling:** Vite 7, Tailwind CSS 4, Wrangler 4, Vitest 3 with
 `@cloudflare/vitest-pool-workers`, Biome for lint and format.
