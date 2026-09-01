@@ -34,6 +34,8 @@ export async function recordClick(env: Env, params: RecordClickParams): Promise<
       utm: params.context.utm,
     });
   } catch (error) {
+    // Log only `error`, never `params` — params.context carries the visitor's
+    // IP and raw user-agent, which must never reach Workers observability.
     console.error("recordClick failed", error);
   }
 }

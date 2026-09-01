@@ -117,6 +117,12 @@ describe("recordClick", () => {
         now: NOW,
       }),
     ).resolves.toBeUndefined();
+
+    // Proves the insert really was rejected (foreign key on link_id), not that
+    // it silently succeeded. Without this, a build of D1/SQLite with foreign
+    // keys off would still pass the assertion above while writing a row.
+    const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM clicks").first<{ n: number }>();
+    expect(count?.n).toBe(0);
   });
 });
 
