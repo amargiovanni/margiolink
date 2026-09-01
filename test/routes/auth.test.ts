@@ -110,6 +110,45 @@ describe("session lifecycle", () => {
     expect(check.status).toBe(401);
   });
 
+  it("revokes a single session by id, leaving the others intact", async () => {
+    const first = sessionCookie(await login(CREDENTIALS));
+    const second = sessionCookie(await login(CREDENTIALS));
+
+    const list = await SELF.fetch("https://link.test/api/auth/sessions", {
+      headers: { cookie: second },
+    });
+    const { sessions } = (await list.json()) as { sessions: { id: string; current: boolean }[] };
+    const other = sessions.find((s) => !s.current);
+    if (!other) throw new Error("expected a non-current session in the list");
+
+    const res = await SELF.fetch(`https://link.test/api/auth/sessions/${other.id}`, {
+      method: "DELETE",
+      headers: { cookie: second },
+    });
+    expect(res.status).toBe(200);
+
+    const revoked = await SELF.fetch("https://link.test/api/auth/sessions", {
+      headers: { cookie: first },
+    });
+    expect(revoked.status).toBe(401);
+
+    const current = await SELF.fetch("https://link.test/api/auth/sessions", {
+      headers: { cookie: second },
+    });
+    expect(current.status).toBe(200);
+  });
+
+  it("answers 404 for an unknown session id", async () => {
+    const cookie = sessionCookie(await login(CREDENTIALS));
+
+    const res = await SELF.fetch("https://link.test/api/auth/sessions/does-not-exist", {
+      method: "DELETE",
+      headers: { cookie },
+    });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+  });
+
   it("rejects a forged cookie", async () => {
     const res = await SELF.fetch("https://link.test/api/auth/sessions", {
       headers: { cookie: `__Host-ml_session=${"a".repeat(64)}` },
