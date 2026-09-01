@@ -1,0 +1,8 @@
+DROP TABLE IF EXISTS login_attempts;
+DROP TABLE IF EXISTS admin_sessions;
+DROP TABLE IF EXISTS click_daily_dim;
+DROP TABLE IF EXISTS click_daily;
+DROP TABLE IF EXISTS clicks;
+DROP TABLE IF EXISTS link_tags;
+DROP TABLE IF EXISTS tags;
+DROP TABLE IF EXISTS links;

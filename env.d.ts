@@ -19,9 +19,15 @@ declare global {
   interface ImportMeta {
     readonly url: string;
   }
-}
 
-declare module "*.sql?raw" {
-  const contents: string;
-  export default contents;
+  // NOTE: a wildcard ambient module declaration (`declare module "*.sql?raw"`)
+  // is visible outside this file only while it sits inside `declare global`.
+  // At the top level of this module file (this file has top-level imports
+  // above, so it *is* a module) it would type-check imports in this file
+  // alone — every other file importing a `*.sql?raw` module would still see
+  // "Cannot find module". Nesting it here is what makes it program-wide.
+  declare module "*.sql?raw" {
+    const contents: string;
+    export default contents;
+  }
 }
