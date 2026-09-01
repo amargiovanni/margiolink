@@ -17,7 +17,7 @@ export interface RateLimitResult {
 function lockDuration(attempts: number): number {
   const round = Math.floor(attempts / MAX_ATTEMPTS) - 1;
   const index = Math.min(Math.max(round, 0), LOCK_STEPS.length - 1);
-  return LOCK_STEPS[index] as number;
+  return LOCK_STEPS[index] ?? LOCK_STEPS[LOCK_STEPS.length - 1] ?? 900;
 }
 
 export async function checkLoginAllowed(
