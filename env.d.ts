@@ -30,4 +30,11 @@ declare global {
     const contents: string;
     export default contents;
   }
+
+  // Same reasoning as the `*.sql?raw` declaration above: this must stay
+  // nested inside `declare global` to be visible outside this file.
+  declare module "*.md?raw" {
+    const contents: string;
+    export default contents;
+  }
 }
