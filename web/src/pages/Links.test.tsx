@@ -132,4 +132,44 @@ describe("Links", () => {
     renderLinks();
     expect(await screen.findByRole("alert")).toHaveTextContent(/could not load/i);
   });
+
+  it("says clicks are unavailable rather than a false zero when the sparklines request fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const path = new URL(String(input), "https://link.test").pathname;
+        if (path === "/api/links") return Response.json(LINKS);
+        if (path === "/api/tags") return Response.json({ tags: [] });
+        if (path === "/api/stats/sparklines") {
+          return Response.json({ error: "boom" }, { status: 500 });
+        }
+        return Response.json({ error: "not_found" }, { status: 404 });
+      }),
+    );
+    renderLinks();
+    expect(await screen.findByText("Clicks unavailable")).toBeInTheDocument();
+    // The row must never fabricate a real-looking zero out of a failure —
+    // a genuine zero and "unknown" have to stay visibly different.
+    expect(screen.queryByText(/^0 clicks/)).not.toBeInTheDocument();
+  });
+
+  it("says the tag filter is unavailable rather than looking like there are no tags when the tags request fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const path = new URL(String(input), "https://link.test").pathname;
+        if (path === "/api/links") return Response.json(LINKS);
+        if (path === "/api/tags") return Response.json({ error: "boom" }, { status: 500 });
+        if (path === "/api/stats/sparklines") return Response.json({ days: 7, series: {} });
+        return Response.json({ error: "not_found" }, { status: 404 });
+      }),
+    );
+    renderLinks();
+    await screen.findByText("launch");
+    expect(screen.getByText(/tag filter unavailable/i)).toBeInTheDocument();
+    // An empty "All tags"-only dropdown would look identical to "there are
+    // no tags in the system" — the filter control itself must be gone, not
+    // just quietly empty.
+    expect(screen.queryByRole("combobox", { name: /^tag$/i })).not.toBeInTheDocument();
+  });
 });

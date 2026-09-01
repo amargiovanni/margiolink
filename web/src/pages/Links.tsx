@@ -68,7 +68,19 @@ export default function Links() {
 
   const links = linksQuery.data?.links ?? [];
   const total = linksQuery.data?.total ?? 0;
-  const series = sparklinesQuery.data?.series ?? {};
+
+  // `undefined` here is genuinely ambiguous: it means "still loading" while
+  // the query is in flight, but once `useSparklines` has succeeded it also
+  // means "this link had zero clicks in the window" (the backend's series
+  // map only carries an entry per link that had at least one click — see
+  // `db/stats.ts`). Only a *successful* response lets that second meaning
+  // resolve to a real all-zero array; anything else must stay `null`
+  // ("unavailable") rather than silently becoming a false zero.
+  function sparklineFor(linkId: number): number[] | null {
+    if (!sparklinesQuery.isSuccess) return null;
+    const days = sparklinesQuery.data.days;
+    return sparklinesQuery.data.series[String(linkId)] ?? new Array(days).fill(0);
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -96,14 +108,30 @@ export default function Links() {
             aria-label="Status"
           />
         </Field>
-        <Field id="links-tag" label="Tag">
-          <Select
-            value={tagId}
-            onValueChange={handleTagChange}
-            options={tagOptions}
-            aria-label="Tag"
-          />
-        </Field>
+        {tagsQuery.isError ? (
+          // An empty "All tags"-only dropdown would be indistinguishable
+          // from a system that genuinely has no tags — this says plainly
+          // that the filter itself couldn't load, rather than implying
+          // there is nothing to filter by.
+          <div className="flex flex-col gap-1">
+            <span className="text-sm text-ink-muted">Tag</span>
+            <p
+              role="note"
+              className="rounded border border-dashed border-rule px-3 py-2 text-sm text-ink-faint"
+            >
+              Tag filter unavailable
+            </p>
+          </div>
+        ) : (
+          <Field id="links-tag" label="Tag">
+            <Select
+              value={tagId}
+              onValueChange={handleTagChange}
+              options={tagOptions}
+              aria-label="Tag"
+            />
+          </Field>
+        )}
       </div>
 
       {linksQuery.isError ? (
@@ -120,7 +148,7 @@ export default function Links() {
       ) : (
         <div className="flex flex-col">
           {links.map((link) => (
-            <LinkRow key={link.id} link={link} sparkline={series[String(link.id)] ?? []} />
+            <LinkRow key={link.id} link={link} sparkline={sparklineFor(link.id)} />
           ))}
         </div>
       )}
