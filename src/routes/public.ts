@@ -41,19 +41,35 @@ receive is a short-lived, strictly necessary one that remembers they entered
 the correct password for a protected link — it lasts ten minutes, is scoped to
 that link alone, and is not used for measurement.</p>
 
+<h2>Who is responsible</h2>
+<p>The data controller for this service is <strong>Andrea Margiovanni</strong>,
+reachable at <a href="mailto:andrea@margiovanni.it">andrea@margiovanni.it</a>.
+Write there with any question about this notice, or about the data described
+below.</p>
+
 <h2>Why</h2>
 <p>The legal basis is <strong>legitimate interest</strong> under Article 6(1)(f)
-GDPR: measuring how the operator's own links perform. The data is pseudonymous,
-there is no profiling, and no decision is made about any individual.</p>
+GDPR: measuring how the controller's own links perform. The data is
+pseudonymous, there is no profiling, and no decision is made about any
+individual.</p>
 
 <h2>How long</h2>
 <p>Individual records are deleted after <strong>${retentionDays} days</strong>.
 Only aggregate counts, which identify nobody, are kept beyond that.</p>
 
 <h2>Your rights</h2>
-<p>Because no identifier persists beyond 24 hours, the operator cannot locate
-records relating to a specific person, and Article 11 GDPR applies. For any
-question about this notice, contact the operator of ${domain}.</p>
+<p>You have the right to ask what is held about you, to have it corrected or
+erased, to object to this processing, and to complain to a supervisory
+authority — in Italy, the <a href="https://www.garanteprivacy.it">Garante per
+la protezione dei dati personali</a>.</p>
+<p>One consequence of the design above is worth stating plainly: because no
+identifier persists beyond the current UTC day, the controller genuinely cannot
+locate the records relating to a specific person, even when asked. Article 11
+GDPR covers this — the controller is not obliged to collect extra information
+purely to make you identifiable, and doing so would defeat the protection.
+Write to <a href="mailto:andrea@margiovanni.it">andrea@margiovanni.it</a>
+anyway if you have a question; that limit is about lookup, not about
+answering.</p>
 </body>
 </html>`;
 }
@@ -76,6 +92,7 @@ export function registerPublicRoutes(app: Hono<{ Bindings: Env }>): void {
   app.get("/.well-known/security.txt", (c) =>
     c.text(
       [
+        "Contact: mailto:andrea@margiovanni.it",
         "Contact: https://github.com/amargiovanni/margiolink/security/advisories/new",
         "Expires: 2027-09-01T00:00:00.000Z",
         "Policy: https://github.com/amargiovanni/margiolink/blob/main/SECURITY.md",

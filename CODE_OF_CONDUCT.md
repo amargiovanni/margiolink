@@ -59,12 +59,7 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement by opening a
-[private security advisory](https://github.com/amargiovanni/margiolink/security/advisories/new),
-which is the only reporting channel this project currently publishes that is
-not visible to everyone. It is not really what that form is for, and a
-dedicated contact address should replace it — see the note at the end of this
-file.
+reported to Andrea Margiovanni at <andrea@margiovanni.it>.
 
 All complaints will be reviewed and investigated promptly and fairly.
 
@@ -135,12 +130,3 @@ For answers to common questions about this code of conduct, see the FAQ at
 [Mozilla CoC]: https://github.com/mozilla/diversity
 [FAQ]: https://www.contributor-covenant.org/faq
 [translations]: https://www.contributor-covenant.org/translations
-
----
-
-**A note for the maintainer, to be removed once actioned:** the Enforcement
-section currently points at the GitHub security advisory form because no
-contact address has been published for this project. That form is for
-vulnerabilities, and using it for conduct reports is a workaround rather than a
-choice. Publish a monitored address here — publishing one is your decision, so
-none was filled in automatically.

@@ -12,11 +12,12 @@ deployment.
 
 ## Reporting a vulnerability
 
-**Use GitHub's private advisory form:**
+**Email <andrea@margiovanni.it>**, or use GitHub's private advisory form:
 <https://github.com/amargiovanni/margiolink/security/advisories/new>
 
-It is private to the maintainers, it works without email, and it becomes the
-advisory if the report is confirmed.
+Either reaches the maintainer privately. The GitHub form has the advantage of
+becoming the published advisory if the report is confirmed; email has the
+advantage of not requiring an account.
 
 Please include, as far as you can:
 
@@ -104,11 +105,4 @@ deployment operator's obligation rather than ours.
 
 ---
 
-**A note for the maintainer, to be removed once actioned:** this policy commits
-to response times and names a single reporting channel. Confirm the GitHub
-advisory form is one you will see, and decide whether to add a monitored email
-address here and in `src/routes/public.ts`'s `security.txt` — none has been
-published, deliberately, because publishing a personal address is your call and
-not an automated one.
-
-*Last reviewed: 2026-09-01 · Owner: repository maintainer*
+*Last reviewed: 2026-09-01 · Controller and maintainer: Andrea Margiovanni*
