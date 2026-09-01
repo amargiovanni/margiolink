@@ -1,7 +1,14 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createLink } from "../../src/db/links";
-import { dimension, sparklines, summary, timeseries } from "../../src/db/stats";
+import {
+  DIMENSION_COLUMNS,
+  type DimensionName,
+  dimension,
+  sparklines,
+  summary,
+  timeseries,
+} from "../../src/db/stats";
 
 const DAY = 86_400;
 const BASE = Date.parse("2026-03-10T00:00:00Z") / 1000;
@@ -25,12 +32,17 @@ async function insert(overrides: Record<string, unknown> = {}) {
     referrer_type: "social",
     referrer_host: "x.com",
     language: "it-IT",
+    utm_source: "newsletter",
+    utm_medium: "email",
+    utm_campaign: "spring-sale",
+    asn_org: "Cloudflare",
     ...overrides,
   };
   await env.DB.prepare(
     `INSERT INTO clicks (link_id, ts, visitor_hash, source, outcome, is_bot, country, city,
-       device_type, os, browser, referrer_type, referrer_host, language)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       device_type, os, browser, referrer_type, referrer_host, language,
+       utm_source, utm_medium, utm_campaign, asn_org)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       row.link_id,
@@ -47,6 +59,10 @@ async function insert(overrides: Record<string, unknown> = {}) {
       row.referrer_type,
       row.referrer_host,
       row.language,
+      row.utm_source,
+      row.utm_medium,
+      row.utm_campaign,
+      row.asn_org,
     )
     .run();
 }
@@ -85,6 +101,9 @@ describe("summary", () => {
     await insert({ ts: BASE + DAY });
     const result = await summary(env.DB, { from: BASE, to: BASE + DAY });
     expect(result.clicks).toBe(0);
+    expect(result.uniques).toBe(0);
+    expect(result.bots).toBe(0);
+    expect(result.countries).toBe(0);
   });
 
   it("scopes to a single link when asked", async () => {
@@ -173,6 +192,40 @@ describe("dimension", () => {
     const slices = await dimension(env.DB, { from: BASE, to: BASE + DAY }, "outcome", 10);
     expect(slices.map((s) => s.value).sort()).toEqual(["password_failed", "redirect"]);
   });
+
+  const SEEDED_VALUES: Partial<Record<DimensionName, string>> = {
+    country: "IT",
+    city: "Milan",
+    device: "desktop",
+    os: "macOS",
+    browser: "Chrome",
+    referrer_type: "social",
+    referrer_host: "x.com",
+    utm_source: "newsletter",
+    utm_medium: "email",
+    utm_campaign: "spring-sale",
+    language: "it-IT",
+    asn_org: "Cloudflare",
+    source: "link",
+    outcome: "redirect",
+  };
+
+  it.each(Object.keys(DIMENSION_COLUMNS) as DimensionName[])(
+    "maps dimension %s to its own seeded column",
+    async (name) => {
+      await insert();
+
+      const slices = await dimension(env.DB, { from: BASE, to: BASE + DAY }, name, 10);
+
+      expect(slices).toHaveLength(1);
+      expect(slices[0]?.clicks).toBe(1);
+      if (name === "dow_hour") {
+        expect(slices[0]?.value).toMatch(/^[0-6]-\d{2}$/);
+      } else {
+        expect(slices[0]?.value).toBe(SEEDED_VALUES[name]);
+      }
+    },
+  );
 });
 
 describe("sparklines", () => {
