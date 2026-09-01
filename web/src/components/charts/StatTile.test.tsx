@@ -25,6 +25,13 @@ describe("StatTile", () => {
     expect(screen.getByText(/new/i)).toBeInTheDocument();
   });
 
+  it("reports no change, not an increase, when the value is unchanged", () => {
+    render(<StatTile label="Clicks" value={100} previous={100} />);
+    expect(screen.getByLabelText(/no change/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^increase/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^decrease/i)).not.toBeInTheDocument();
+  });
+
   it("omits the comparison entirely when there is nothing to compare against", () => {
     render(<StatTile label="Countries" value={12} />);
     expect(screen.queryByText(/previous period/i)).not.toBeInTheDocument();
