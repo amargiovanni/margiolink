@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "margiolink",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-22",
+  "observability": { "enabled": true },
+  "vars": {
+    "SHORT_DOMAIN": "link.margio.uk",
+    "RAW_RETENTION_DAYS": "180"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "margiolink",
+      "database_id": "fd2d5190-a283-4236-accf-c2ddb10d3618",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 * * * *", "30 3 * * *"]
+  },
+  "routes": [
+    { "pattern": "link.margio.uk/*", "zone_name": "margio.uk" }
+  ]
+}
