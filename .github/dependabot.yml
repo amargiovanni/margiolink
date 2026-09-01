@@ -1,0 +1,32 @@
+version: 2
+
+updates:
+  # Runtime and build dependencies. Grouped so a routine week produces one
+  # reviewable pull request rather than a dozen, while anything with a security
+  # advisory still arrives on its own and is not buried in a group.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      cloudflare:
+        patterns:
+          - "wrangler"
+          - "@cloudflare/*"
+      dev-tooling:
+        patterns:
+          - "@biomejs/*"
+          - "typescript"
+          - "vitest"
+    commit-message:
+      prefix: chore
+      include: scope
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
