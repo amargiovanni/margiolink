@@ -435,6 +435,14 @@ CREATE TABLE clicks (
 
 CREATE INDEX idx_clicks_link_ts ON clicks (link_id, ts);
 CREATE INDEX idx_clicks_ts ON clicks (ts);
+```
+
+> **Superseded during execution.** The final whole-branch review found that
+> `referrer_url` — the full third-party URL including path and query — was
+> written on every click and read by no query. Migration `0002` drops it; see
+> the design spec's §3.2 note. Do not reintroduce it.
+
+```sql
 
 CREATE TABLE click_daily (
   day     TEXT    NOT NULL,
@@ -6196,7 +6204,7 @@ row-per-person structure. `compliance/data-map.md` is the authoritative wording.
 | `device_type`, `os`, `os_version` | Yes, in combination | Which devices the audience uses |
 | `browser`, `browser_version` | Yes, in combination | Which browsers the audience uses |
 | `language` | Yes, in combination | Audience language, for content decisions |
-| `referrer_host`, `referrer_url`, `referrer_type` | Yes, in combination | Which channel drove the traffic |
+| `referrer_host`, `referrer_type` | Yes, in combination | Which channel drove the traffic |
 | `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content` | No | Campaign parameters the controller placed in the link |
 
 ## Deliberately not collected
