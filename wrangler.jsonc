@@ -2,6 +2,10 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "margiolink",
   "main": "src/index.ts",
+  // Capped by the workerd binary pinned inside @cloudflare/vitest-pool-workers
+  // (newest it supports is 2026-08-22). Production and tests deliberately share
+  // this one date so the suite exercises the same compatibility surface as the
+  // deploy. Raise it once the test runner ships a newer pinned runtime.
   "compatibility_date": "2026-08-22",
   "observability": { "enabled": true },
   "vars": {
