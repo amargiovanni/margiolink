@@ -1,0 +1,82 @@
+name: Bug report
+description: Something behaves differently from how it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If this has security impact, please close this and use the
+        [private advisory form](https://github.com/amargiovanni/margiolink/security/advisories/new)
+        instead. In particular: anything that lets someone reach an
+        authenticated endpoint, bypass a link password, or cause an IP address
+        or user-agent to be stored or logged.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+      placeholder: |
+        I created a link with an expiry in the past and followed it.
+        I expected a 410. I got a 302 to the original destination.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: >-
+        Precisely enough that someone else can follow it. Commands and curl
+        calls are better than prose. Redact your own secrets.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Commit or release
+      description: Output of `git rev-parse --short HEAD`, or the release tag.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Where
+      options:
+        - Local (wrangler dev)
+        - Deployed to Cloudflare
+        - Both
+    validations:
+      required: true
+
+  - type: dropdown
+    id: fresh-clone
+    attributes:
+      label: Does it reproduce on a fresh clone?
+      description: >-
+        `git clone`, `npm ci`, `npm run db:migrate:local`, `npm run dev`. If it
+        does not, that is useful information — say what is different about your
+        setup in the notes below.
+      options:
+        - "Yes"
+        - "No"
+        - "Not tried"
+    validations:
+      required: true
+
+  - type: textarea
+    id: failing-test
+    attributes:
+      label: A failing test, if you have one
+      description: >-
+        Worth more than any amount of description, and it is most of the fix.
+      render: typescript
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Logs, screenshots, what you already ruled out.

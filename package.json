@@ -1,0 +1,44 @@
+{
+  "name": "margiolink",
+  "version": "0.1.0",
+  "description": "URL shortener with privacy-preserving click analytics, on Cloudflare Workers and D1",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amargiovanni/margiolink.git"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "db:migrate:local": "wrangler d1 migrations apply margiolink --local",
+    "db:migrate": "wrangler d1 migrations apply margiolink --remote",
+    "db:rollback:local": "node scripts/rollback.mjs --local",
+    "db:rollback": "node scripts/rollback.mjs --remote",
+    "db:verify-rollback": "node scripts/verify-rollback.mjs"
+  },
+  "dependencies": {
+    "bowser": "^2.14.1",
+    "hono": "^4.13.5",
+    "isbot": "^5.2.2",
+    "qrcode-generator": "^2.0.4",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.11",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@cloudflare/workers-types": "^5.20260901.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.127.1"
+  }
+}

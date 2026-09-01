@@ -1,1 +1,478 @@
-# margiolink
+# MargioLink
+
+A URL shortener with rich click analytics that never stores an IP address.
+
+[![CI](https://github.com/amargiovanni/margiolink/actions/workflows/ci.yml/badge.svg)](https://github.com/amargiovanni/margiolink/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+MargioLink runs as a single Cloudflare Worker with D1 as its only datastore.
+It shortens links, redirects visitors in a few milliseconds, and records enough
+about each click to answer real questions — which country, which device, which
+channel, what time of day — without ever writing down who the visitor was.
+
+> **Status:** the backend is complete and covered by 317 tests. The dashboard is
+> the next piece of work; today the API is driven with `curl` or your own client.
+> See [Roadmap](#roadmap).
+
+---
+
+## Contents
+
+- [Why this exists](#why-this-exists)
+- [What it does](#what-it-does)
+- [How the privacy design works](#how-the-privacy-design-works)
+- [Architecture](#architecture)
+- [Running it locally](#running-it-locally)
+- [Deploying your own](#deploying-your-own)
+- [Configuration](#configuration)
+- [API reference](#api-reference)
+- [Data model](#data-model)
+- [Scheduled jobs](#scheduled-jobs)
+- [Development](#development)
+- [Compliance](#compliance)
+- [Roadmap](#roadmap)
+- [Contributing, security, licence](#contributing-security-licence)
+
+---
+
+## Why this exists
+
+Most link shorteners answer "how many people clicked?" by keeping a row that
+identifies the person who clicked. That is a choice, not a requirement. The
+interesting analytics — which country, which device, which channel, which hour
+— survive perfectly well without an identifier that outlives the day.
+
+MargioLink is built the other way round: the privacy property comes first and
+the measurement is fitted to it. The result is a system where "we don't track
+you" is a statement about the code rather than about intentions, and where the
+[public privacy notice](src/routes/public.ts) says things that a test enforces.
+
+It is also small enough to read. The whole backend is a few thousand lines of
+TypeScript with no ORM, no framework beyond a router, and no service you have
+to sign up for besides Cloudflare.
+
+## What it does
+
+**Links**
+
+- Short links with generated or custom slugs, from an alphabet with no
+  ambiguous characters (`0`/`O`, `1`/`l`/`I` are all absent)
+- Expiry dates, with an optional fallback URL to send late arrivals to
+- Activate and deactivate without deleting
+- Optional per-link password, gated by an interstitial
+- Tags, with colours, for organising and filtering
+- QR codes as SVG, encoding a marker so scans count separately from clicks
+- Soft delete and restore
+
+**Analytics** — recorded on every click
+
+- Country, region, city, time zone, network operator, and the Cloudflare
+  datacenter that served the request
+- Device type, operating system, browser, preferred language
+- Referrer host, classified as direct, search, social, email or AI
+- The five UTM parameters
+- Whether the visitor was a bot, kept out of every human-facing figure
+- Which of five outcomes the request produced: redirected, inactive, expired,
+  password required, password failed
+
+**Queries**
+
+- Summary with a comparison against the immediately preceding window of equal
+  length, which is what makes a delta meaningful
+- Time series bucketed by hour, day or Monday-start week
+- Breakdowns across fifteen dimensions, including an hour-by-weekday matrix
+- A live feed of recent clicks
+- Per-link sparklines, zero-filled so gaps are visible
+
+**Operations**
+
+- Hourly rollup into pre-aggregated daily tables
+- Daily retention job that deletes raw click rows past their window
+- Reversible migrations, verified in CI
+
+## How the privacy design works
+
+**No IP address is ever written to the database.** Neither is the raw
+user-agent string. Both are read into memory on the redirect path, used as
+input to one hash, and discarded.
+
+That hash is the whole trick:
+
+```
+visitor_hash = HMAC-SHA256(key = HASH_SECRET + ":" + <today's UTC date>,
+                           message = ip + user-agent + slug)
+```
+
+The date is part of the **key**, not the message. That distinction is the
+design: both arrangements produce a different value each day, but only this one
+means yesterday's key no longer exists to be applied. A visitor is
+distinguishable from another visitor within a UTC day, and indistinguishable
+from their own past self across days.
+
+Three consequences follow, and they are stated in the privacy notice because
+they are true rather than because they sound good:
+
+- **Unique-visitor counts are honest within a day and deliberately imprecise
+  across one.** Summing daily uniques over a month counts a returning visitor
+  once per day. This is a real limitation of the design, not a bug, and it is
+  documented where a consumer of the API will see it.
+- **The hash is per-link.** The same person visiting two of your links produces
+  two unrelated values, so nothing accumulates into a profile.
+- **Rotating `HASH_SECRET` resets the counts.** Every existing hash becomes
+  discontinuous. Rotate it if it leaks; do not rotate it on a schedule.
+
+Beyond visitors, the only IP-derived value stored anywhere is in
+`login_attempts`, where the same daily-rotating HMAC throttles brute-force
+attempts against the admin password. It is purged daily and exists to protect
+the account, not to measure anyone.
+
+Two cookies exist in the entire system: the admin session, and a ten-minute
+token proving a visitor entered the right password for a protected link.
+Neither is used for measurement, and both are disclosed at `/privacy`.
+
+## Architecture
+
+One Worker, three surfaces:
+
+| Route | What it does | Auth |
+| --- | --- | --- |
+| `/:slug` | Public redirect — the hot path | none |
+| `/api/*` | JSON API, 21 routes | session cookie |
+| `/privacy`, `/robots.txt`, `/.well-known/security.txt`, `/_health` | Public | none |
+
+**The redirect answers before the database is touched.** It resolves the slug,
+checks the link is live, and returns a `302`. The click is recorded inside
+`ctx.waitUntil()` — after the response is already on the wire — so D1 latency
+can never reach a visitor. `recordClick()` is the single ingestion boundary and
+never throws: a failing analytics write cannot harm a redirect.
+
+**Authorization is structural.** Public and authenticated routes live on
+separate routers, and a test walks the framework's own route table and requires
+`401` from every non-allowlisted route. Mounting a new endpoint on the wrong
+router fails the build rather than shipping an open endpoint.
+
+**Analytics are computed twice and reconciled.** Live queries read raw clicks;
+the hourly rollup pre-aggregates the same data into daily tables. A test runs
+both paths over identical data and compares the results, so the two cannot
+drift into showing different numbers for the same day.
+
+```
+src/
+├── index.ts              Worker entry: fetch + scheduled
+├── types.ts              Env bindings
+├── lib/                  Pure logic — no database, no bindings
+│   ├── slug.ts           generation, shape, reserved names
+│   ├── url.ts            destination validation
+│   ├── crypto.ts         daily-rotating HMAC, PBKDF2, constant-time compare
+│   ├── ua.ts             client hints first, user-agent fallback
+│   ├── referrer.ts       host extraction and channel classification
+│   └── request-context.ts geography, UTM, QR marker
+├── db/                   every SQL statement in the project
+│   ├── links.ts  clicks.ts  tags.ts  sessions.ts  stats.ts
+├── ingest/record-click.ts  the single ingestion boundary
+├── auth/                 sessions, throttle, middleware, link tokens
+├── routes/
+│   ├── redirect.ts       GET/POST /:slug
+│   ├── public.ts         privacy, robots, security.txt
+│   └── api/              auth, links, tags, stats
+└── cron/                 rollup.ts, retention.ts
+```
+
+## Running it locally
+
+**Requirements:** Node 24 (see `.nvmrc`) and npm. No Cloudflare account needed
+to run or test — D1 runs locally under `workerd`.
+
+```bash
+git clone https://github.com/amargiovanni/margiolink.git
+cd margiolink
+npm ci
+
+cp .dev.vars.example .dev.vars
+# Edit .dev.vars: pick an ADMIN_USER and ADMIN_PASSWORD, then generate a secret
+openssl rand -hex 32   # paste as HASH_SECRET
+
+npm run db:migrate:local
+npm run dev
+```
+
+The Worker comes up on `http://localhost:8787`. Try it:
+
+```bash
+# Log in and keep the session cookie
+curl -s -X POST localhost:8787/api/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"username":"YOUR_ADMIN_USER","password":"YOUR_ADMIN_PASSWORD"}' \
+  -c /tmp/ml.txt -i | head -3
+
+# Create a link
+curl -s -X POST localhost:8787/api/links \
+  -H 'content-type: application/json' -b /tmp/ml.txt \
+  -d '{"targetUrl":"https://example.com","slug":"hello","title":"Hello"}'
+
+# Follow it
+curl -s -i localhost:8787/hello | head -3
+
+# See the click
+curl -s -b /tmp/ml.txt "localhost:8787/api/stats/live?limit=5"
+```
+
+To run the scheduled jobs by hand:
+
+```bash
+curl "localhost:8787/cdn-cgi/local/scheduled?cron=0+*+*+*+*"    # hourly rollup
+curl "localhost:8787/cdn-cgi/local/scheduled?cron=30+3+*+*+*"   # daily retention
+```
+
+## Deploying your own
+
+MargioLink is meant to be self-hosted. Everything below happens in your own
+Cloudflare account, and the free plan is enough for personal use.
+
+**1. Fork and clone**, then `npm ci`.
+
+**2. Create the database.**
+
+```bash
+npx wrangler login
+npx wrangler d1 create margiolink
+```
+
+Copy the `database_id` it prints into `wrangler.jsonc`.
+
+**3. Point it at your domain.** In `wrangler.jsonc`, replace `link.margio.uk`
+in both `vars.SHORT_DOMAIN` and `routes[0]` with your own, and set `zone_name`
+to the Cloudflare zone that owns it. The domain must already be on Cloudflare.
+
+If you have no domain yet, delete the `routes` block entirely and deploy to
+`<name>.workers.dev`; set `SHORT_DOMAIN` to that hostname. Everything works,
+the links are just longer.
+
+**4. Set the secrets.** These are not in `wrangler.jsonc` and must never be
+committed:
+
+```bash
+npx wrangler secret put ADMIN_USER
+npx wrangler secret put ADMIN_PASSWORD
+npx wrangler secret put HASH_SECRET     # openssl rand -hex 32
+```
+
+`HASH_SECRET` must be at least 32 characters. **The Worker refuses to serve
+without it** rather than falling back to a default — a missing secret would
+otherwise produce forgeable link tokens and reproducible visitor hashes while
+looking completely normal from outside.
+
+**5. Migrate and deploy.**
+
+```bash
+npm run db:migrate     # applies migrations to the remote database
+npm run deploy
+```
+
+**6. Check it.**
+
+```bash
+curl -s https://your-domain/_health          # {"ok":true}
+curl -s https://your-domain/privacy | head   # your privacy notice
+```
+
+**7. Adjust the privacy notice.** `src/routes/public.ts` contains the text
+served at `/privacy`. It is accurate for the software as written, but it says
+"the operator of this deployment" where a real notice needs your identity and a
+contact route. That is your obligation as the data controller, not something a
+fork can fill in for you.
+
+### Keeping a fork current
+
+The two cron triggers are declared in `wrangler.jsonc` and start automatically
+on deploy. Nothing else runs on a schedule, and there is no telemetry — this
+software never contacts anything except the browser in front of it.
+
+## Configuration
+
+**Plain variables** (`wrangler.jsonc` → `vars`, safe to commit):
+
+| Name | Default | What it does |
+| --- | --- | --- |
+| `SHORT_DOMAIN` | `link.margio.uk` | Used to build short URLs and to reject a destination that points back at the shortener |
+| `RAW_RETENTION_DAYS` | `180` | How long individual click rows live. Also interpolated into the published privacy notice, so the page cannot drift from the job |
+
+**Secrets** (`wrangler secret put`, never committed):
+
+| Name | Notes |
+| --- | --- |
+| `ADMIN_USER` | The single admin username |
+| `ADMIN_PASSWORD` | Compared in constant time; use something long |
+| `HASH_SECRET` | ≥32 characters of real entropy. See the warning above about rotation |
+
+**`compatibility_date`** is pinned to `2026-08-22`. That is not arbitrary: the
+`workerd` build inside the test runner refuses newer dates, and production and
+tests deliberately share one config so the suite exercises the same
+compatibility surface as the deploy. Raise it once the test runner ships a
+newer pinned runtime; the reasoning is repeated in `wrangler.jsonc`.
+
+## API reference
+
+Everything under `/api` requires the session cookie except the login route.
+All bodies and responses are JSON.
+
+### Auth
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `POST` | `/api/auth/login` | `{username, password}`. Sets a `__Host-` session cookie. Throttled per IP hash |
+| `POST` | `/api/auth/logout` | Invalidates the current session |
+| `GET` | `/api/auth/sessions` | Active sessions, with a coarse device label |
+| `DELETE` | `/api/auth/sessions` | Revoke every session |
+| `DELETE` | `/api/auth/sessions/:id` | Revoke one |
+
+### Links
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `GET` | `/api/links` | `?search=&status=&tagId=&limit=&offset=`. Status is `all\|active\|inactive\|expired\|deleted` |
+| `POST` | `/api/links` | `{targetUrl, slug?, title?, description?, password?, expiresAt?, expiredUrl?}` |
+| `GET` | `/api/links/:id` | One link with its tags |
+| `PATCH` | `/api/links/:id` | Same fields, plus `isActive`. `password: null` clears it |
+| `DELETE` | `/api/links/:id` | Soft delete |
+| `POST` | `/api/links/:id/restore` | Undo a soft delete |
+| `PUT` | `/api/links/:id/tags` | `{tagIds: [...]}` — replaces the whole set |
+| `GET` | `/api/links/:id/qr.svg` | QR code encoding the link with a scan marker |
+
+A link never returns its password. `hasPassword` is a boolean.
+
+Status codes worth knowing: `409` for a slug already taken, `422` for a slug
+that is malformed or reserved and for a rejected destination, `429` when the
+creation limit is hit.
+
+### Tags
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `GET` | `/api/tags` | |
+| `POST` | `/api/tags` | `{name, color}` — colour must be `#rrggbb` |
+| `DELETE` | `/api/tags/:id` | Detaches from links; does not delete them |
+
+### Statistics
+
+All take `from` and `to` as unix seconds, plus optional `linkId`.
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `GET` | `/api/stats/summary` | Returns `current` and `previous` — the preceding window of equal length |
+| `GET` | `/api/stats/timeseries` | `&granularity=hour\|day\|week` |
+| `GET` | `/api/stats/dimension` | `&name=<dimension>&limit=` (max 100) |
+| `GET` | `/api/stats/live` | `?limit=` (max 200) — recent clicks |
+| `GET` | `/api/stats/sparklines` | `?days=` (max 90) — per-link daily counts |
+
+Dimensions: `country`, `city`, `device`, `os`, `browser`, `referrer_type`,
+`referrer_host`, `utm_source`, `utm_medium`, `utm_campaign`, `language`,
+`asn_org`, `source`, `outcome`, and `dow_hour` for the hour-by-weekday matrix.
+
+Bots are excluded from every figure except the `bots` count in `summary`.
+
+**One caveat the API cannot hide:** these endpoints read raw click rows, so a
+range extending past `RAW_RETENTION_DAYS` under-reports rather than failing.
+Serving older ranges from the aggregate tables is part of the dashboard work.
+
+### Public
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `GET` | `/:slug` | The redirect. `?s=qr` marks a scan |
+| `POST` | `/:slug` | Password submission for a protected link |
+| `GET` | `/privacy` | The privacy notice |
+| `GET` | `/robots.txt` | Disallows everything |
+| `GET` | `/.well-known/security.txt` | RFC 9116 |
+| `GET` | `/_health` | `{"ok":true}` |
+
+Reserved slugs, rejected at creation: `app`, `api`, `privacy`, `assets`,
+`robots.txt`, `favicon.ico`, `_health`.
+
+## Data model
+
+Eight tables, created by one migration and reversed by one rollback file.
+
+| Table | Holds |
+| --- | --- |
+| `links` | Slug, destination, title, password hash and salt, expiry, active flag, soft-delete timestamp |
+| `tags`, `link_tags` | Tags and their assignment |
+| `clicks` | One row per click. Geography, device, referrer, UTM, outcome, and `visitor_hash` — no IP, no raw user-agent |
+| `click_daily` | Per-day, per-link totals: clicks, uniques, bots |
+| `click_daily_dim` | Per-day, per-link, per-dimension counts. Retains the dimension's value alongside the count |
+| `admin_sessions` | SHA-256 of the session token — never the token |
+| `login_attempts` | Daily-rotating IP hash, attempt count, lockout |
+
+Aggregate tables are kept indefinitely and raw clicks are not; that asymmetry
+is the entire reason the rollup exists.
+
+## Scheduled jobs
+
+**Hourly rollup** (`0 * * * *`) aggregates today and yesterday into the daily
+tables. It is idempotent — it deletes a day before reinserting it — so running
+it repeatedly converges rather than accumulating, and re-rolling yesterday
+catches clicks that arrived just before midnight.
+
+**Daily retention** (`30 3 * * *`) deletes raw click rows past
+`RAW_RETENTION_DAYS`, expired sessions, and stale login-attempt rows. It works
+in bounded batches so a backlog cannot exceed a statement limit and fail
+forever, and **it refuses to delete raw rows for any day that was never rolled
+up** — if the rollup has been failing, retention declines and says so rather
+than silently eating history.
+
+## Development
+
+```bash
+npm test                    # 317 tests, inside workerd against real D1
+npm run test:watch
+npm run check               # Biome: lint and format
+npm run check:fix
+npm run typecheck           # tsc --noEmit
+npm run db:verify-rollback  # proves the newest migration is reversible
+```
+
+Tests never mock the database. They run inside `workerd` with a real local D1,
+so every SQL statement is executed by SQLite — a query that would fail in
+production fails here.
+
+CI runs lint, types and the full suite on every pull request, plus a separate
+job that applies the migrations, rolls the newest one back, and checks the
+schema both changed and came back identical. A migration added without a
+working down file fails there.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions and the review bar.
+
+## Compliance
+
+MargioLink is built in a context where the EU's GDPR and Cyber Resilience Act
+apply, and the evidence lives in the repository rather than in a drawer:
+
+- [`compliance/legitimate-interest-assessment.md`](compliance/legitimate-interest-assessment.md)
+  — the Article 6(1)(f) balancing test, including a DPIA screening
+- [`compliance/data-map.md`](compliance/data-map.md) — every `clicks` column
+  classified, what is deliberately not collected, and why
+- [`SECURITY.md`](SECURITY.md) — also the coordinated vulnerability disclosure
+  policy the CRA's Annex I requires
+
+A test compares the documented column set against the live schema in both
+directions, so a column added without documentation fails the build and so does
+a documented column that no longer exists. The privacy notice's retention figure
+is interpolated from the same variable the cron job reads.
+
+**If you deploy this, you are the data controller.** The documents above
+describe the software; they are a starting point for your own record, not a
+substitute for it.
+
+## Roadmap
+
+The backend is done. Next is the dashboard: a responsive interface for creating
+links and reading the analytics, built against the API above. Two known pieces
+of work belong to it — serving ranges older than the retention window from the
+aggregate tables, and labelling summed unique counts honestly.
+
+## Contributing, security, licence
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — how to propose a change
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- [SECURITY.md](SECURITY.md) — report a vulnerability privately, please
+- [MIT](LICENSE)

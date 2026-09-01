@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "margiolink",
+  "main": "src/index.ts",
+  // Capped by the workerd binary pinned inside @cloudflare/vitest-pool-workers
+  // (newest it supports is 2026-08-22). Production and tests deliberately share
+  // this one date so the suite exercises the same compatibility surface as the
+  // deploy. Raise it once the test runner ships a newer pinned runtime.
+  "compatibility_date": "2026-08-22",
+  "observability": { "enabled": true },
+  "vars": {
+    "SHORT_DOMAIN": "link.margio.uk",
+    "RAW_RETENTION_DAYS": "180"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "margiolink",
+      "database_id": "fd2d5190-a283-4236-accf-c2ddb10d3618",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 * * * *", "30 3 * * *"]
+  },
+  "routes": [
+    { "pattern": "link.margio.uk/*", "zone_name": "margio.uk" }
+  ]
+}

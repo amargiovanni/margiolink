@@ -1,0 +1,65 @@
+name: Feature or change
+description: Propose something new, or a change in behaviour
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe what you want to achieve rather than what you plan to
+        build — there is often a smaller change that gets you there.
+
+        Some things are likely to be declined, listed in
+        [CONTRIBUTING.md](https://github.com/amargiovanni/margiolink/blob/main/CONTRIBUTING.md#before-you-start-writing).
+        The short version: nothing that stores an IP address, a raw
+        user-agent, or an identifier surviving a UTC day; no third-party
+        analytics or telemetry; no second datastore; no cookie-based visitor
+        identification.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: >-
+        The situation you are in, not the solution you have in mind. What is
+        awkward or impossible today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+      description: >-
+        If you have a specific design in mind, describe it. If you only know
+        the outcome you want, that is fine and often more useful.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What have you tried or considered?
+      description: >-
+        Including workarounds that nearly work — those often reveal the real
+        shape of the problem.
+
+  - type: dropdown
+    id: privacy-impact
+    attributes:
+      label: Would this change what is collected or stored?
+      description: >-
+        Be honest here; it is not a disqualifier by itself, but it changes the
+        conversation and it needs to happen up front rather than in review.
+      options:
+        - "No — nothing new is collected or stored"
+        - "Yes — a new field, or a new use of an existing one"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: willing
+    attributes:
+      label: Would you like to implement it?
+      options:
+        - label: I would like to open a pull request for this
