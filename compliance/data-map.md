@@ -41,7 +41,7 @@ pending human sign-off.
 | `device_type`, `os`, `os_version` | Yes, in combination | Which devices the audience uses |
 | `browser`, `browser_version` | Yes, in combination | Which browsers the audience uses |
 | `language` | Yes, in combination | Audience language (`Accept-Language`, first value), for content decisions |
-| `referrer_host`, `referrer_url`, `referrer_type` | Yes, in combination | Which channel drove the traffic (`src/lib/referrer.ts`) |
+| `referrer_host`, `referrer_type` | Yes, in combination | Which channel drove the traffic — the referring host and its classification, never the referring URL (`src/lib/referrer.ts`) |
 | `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content` | No | Campaign parameters the controller placed in the link, read back from its own query string |
 
 ## Deliberately not collected
@@ -52,6 +52,7 @@ pending human sign-off.
 | Raw user-agent | `User-Agent` | High-entropy fingerprint; only the parsed fields (`device_type`, `os`, `os_version`, `browser`, `browser_version`) are kept |
 | Latitude / longitude | `request.cf` | Finer than the purpose requires; `GeoInfo` in `src/lib/request-context.ts` does not read these fields |
 | Postal code | `request.cf` | Finer than the purpose requires; not read |
+| Full referrer URL | `Referer` | Its path and query string carry unbounded free text from a third-party page — search terms, thread titles, session tokens, and by accident the kind of special-category signal §6 of the LIA records as not processed. No query ever read it. `parseReferrer` returns only the host and the channel; `migrations/0002_drop_referrer_url.sql` dropped the `referrer_url` column that used to store it |
 
 ## Other personal data in the system
 

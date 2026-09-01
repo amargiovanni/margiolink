@@ -39,6 +39,14 @@ processing is limited to what measurement requires:
   platform (`request.cf`) at no cost, are deliberately discarded —
   `src/lib/request-context.ts`'s `GeoInfo` only reads `continent`, `country`,
   `region`, `city`, `timezone`, `asOrganization` and `colo` off `request.cf`.
+- The referring page is reduced to its host and a channel classification
+  (`src/lib/referrer.ts`'s `parseReferrer` returns `host` and `type` only). The
+  full `Referer` URL is not stored: an earlier build kept it in a
+  `clicks.referrer_url` column, no query ever read it, and its path and query
+  string carry unbounded free text from a third-party page — which also fails
+  the necessity test on this section's own terms. `migrations/0002_drop_referrer_url.sql`
+  dropped the column; the reversal script restores the column but deliberately
+  not the data.
 - Individual records are deleted after `RAW_RETENTION_DAYS` days (180 in the
   current configuration — `wrangler.jsonc`), enforced by
   `src/cron/retention.ts`'s `runRetention`, which runs daily at 03:30 UTC

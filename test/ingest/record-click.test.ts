@@ -69,6 +69,31 @@ describe("recordClick", () => {
     expect(row?.visitor_hash).toMatch(/^[0-9a-f]{32}$/);
   });
 
+  it("stores the referring host but never the full referrer URL", async () => {
+    const link = await createLink(env.DB, { slug: "abc", targetUrl: "https://example.com" }, NOW);
+    await recordClick(env, {
+      linkId: link.id,
+      slug: "abc",
+      outcome: "redirect",
+      context: contextFor("https://link.test/abc", {
+        // A third-party URL's path and query routinely carry content the
+        // operator never intended to collect — search terms, thread titles,
+        // session tokens. Only the host is needed to attribute a channel.
+        referer: "https://forum.example.com/t/9182-a-private-thread?q=sensitive+terms",
+      }),
+      now: NOW,
+    });
+
+    const row = await env.DB.prepare("SELECT * FROM clicks").first<Record<string, unknown>>();
+    expect(row?.referrer_host).toBe("forum.example.com");
+    expect(row?.referrer_type).toBe("other");
+
+    const serialised = JSON.stringify(row);
+    expect(serialised).not.toContain("9182");
+    expect(serialised).not.toContain("a-private-thread");
+    expect(serialised).not.toContain("sensitive");
+  });
+
   it("gives the same visitor the same hash twice on the same day", async () => {
     const link = await createLink(env.DB, { slug: "abc", targetUrl: "https://example.com" }, NOW);
     const context = contextFor("https://link.test/abc", {

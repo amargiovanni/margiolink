@@ -2,7 +2,6 @@ export type ReferrerType = "direct" | "search" | "social" | "email" | "ai" | "ot
 
 export interface ReferrerInfo {
   host: string | null;
-  url: string | null;
   type: ReferrerType;
 }
 
@@ -75,25 +74,33 @@ function matches(host: string, candidate: string): boolean {
   return host === candidate || host.endsWith(`.${candidate}`);
 }
 
+/**
+ * Classify a `Referer` header down to its host and a channel.
+ *
+ * The raw header is deliberately not returned: its path and query carry
+ * unbounded free text from a third-party page, nothing in the application ever
+ * needed it, and `migrations/0002_drop_referrer_url.sql` removed the column
+ * that used to store it.
+ */
 export function parseReferrer(raw: string | null): ReferrerInfo {
   if (!raw) {
-    return { host: null, url: null, type: "direct" };
+    return { host: null, type: "direct" };
   }
 
   let parsed: URL;
   try {
     parsed = new URL(raw);
   } catch {
-    return { host: null, url: null, type: "direct" };
+    return { host: null, type: "direct" };
   }
 
   const host = stripWww(parsed.hostname.toLowerCase());
 
   for (const [type, hosts] of CLASSIFICATION) {
     if (hosts.some((candidate) => matches(host, candidate))) {
-      return { host, url: raw, type };
+      return { host, type };
     }
   }
 
-  return { host, url: raw, type: "other" };
+  return { host, type: "other" };
 }

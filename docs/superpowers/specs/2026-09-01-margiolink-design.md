@@ -131,13 +131,20 @@ clicks (
   device_type TEXT, os TEXT, os_version TEXT,
   browser TEXT, browser_version TEXT, language TEXT,
 
-  referrer_host TEXT, referrer_url TEXT, referrer_type TEXT,
+  referrer_host TEXT, referrer_type TEXT,
   utm_source TEXT, utm_medium TEXT, utm_campaign TEXT,
   utm_term TEXT, utm_content TEXT
 )
 ```
 
 Indexes: `(link_id, ts)`, `(ts)`.
+
+The full referrer URL is deliberately not a column. An earlier version of this
+section specified `referrer_url TEXT`, and `migrations/0002_drop_referrer_url.sql`
+removed it: no query needed it, its path and query string carried unbounded free
+text from a third-party page, and `/privacy` describes the field as "the site
+that referred you" — a host. `referrer_host` and `referrer_type` carry
+everything the dashboard attributes a channel from.
 
 Every field above comes from `request.cf` or from request headers. No call to
 any third-party service is made; no data leaves Cloudflare.

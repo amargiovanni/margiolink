@@ -39,9 +39,9 @@ export async function insertClick(db: D1Database, click: ClickInsert): Promise<v
         link_id, ts, visitor_hash, source, outcome, is_bot,
         continent, country, region, city, timezone, asn_org, colo,
         device_type, os, os_version, browser, browser_version, language,
-        referrer_host, referrer_url, referrer_type,
+        referrer_host, referrer_type,
         utm_source, utm_medium, utm_campaign, utm_term, utm_content
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       click.linkId,
@@ -64,7 +64,6 @@ export async function insertClick(db: D1Database, click: ClickInsert): Promise<v
       click.client.browserVersion,
       click.client.language,
       click.referrer.host,
-      click.referrer.url,
       click.referrer.type,
       click.utm.source,
       click.utm.medium,

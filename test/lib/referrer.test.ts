@@ -3,11 +3,11 @@ import { parseReferrer } from "../../src/lib/referrer";
 
 describe("parseReferrer", () => {
   it("treats a missing referrer as direct", () => {
-    expect(parseReferrer(null)).toEqual({ host: null, url: null, type: "direct" });
+    expect(parseReferrer(null)).toEqual({ host: null, type: "direct" });
   });
 
   it("treats an unparseable referrer as direct", () => {
-    expect(parseReferrer("not a url")).toEqual({ host: null, url: null, type: "direct" });
+    expect(parseReferrer("not a url")).toEqual({ host: null, type: "direct" });
   });
 
   it("strips the www prefix from the host", () => {
@@ -37,7 +37,10 @@ describe("parseReferrer", () => {
     expect(parseReferrer("https://news.google.com/foo").type).toBe("search");
   });
 
-  it("keeps the full referrer URL", () => {
-    expect(parseReferrer("https://example.com/a?b=1").url).toBe("https://example.com/a?b=1");
+  it("returns the host and the channel only, never the path or the query string", () => {
+    expect(parseReferrer("https://example.com/a?b=secret")).toEqual({
+      host: "example.com",
+      type: "other",
+    });
   });
 });

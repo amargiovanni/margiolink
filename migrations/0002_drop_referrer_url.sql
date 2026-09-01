@@ -1,0 +1,15 @@
+-- Stop retaining the full third-party referrer URL.
+--
+-- `referrer_url` held the complete `Referer` header — scheme, host, path and
+-- query string — for the raw retention window (180 days). No query in the
+-- application ever read it: the dashboard attributes channels from
+-- `referrer_host` and `referrer_type`. A third-party URL's path and query
+-- routinely carry content the operator never intended to collect (search
+-- terms, thread titles, session tokens, and by accident the kind of
+-- special-category signal the DPIA screening records as not processed), and the
+-- public notice at `/privacy` describes this field as "the site that referred
+-- you" — a host, not a URL.
+--
+-- `referrer_host` and `referrer_type` are kept: both are used, and both are
+-- what the notice and the data map actually describe.
+ALTER TABLE clicks DROP COLUMN referrer_url;
