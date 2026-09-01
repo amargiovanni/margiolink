@@ -13,6 +13,10 @@ export async function runRetention(
   now: number,
   retentionDays: number,
 ): Promise<RetentionResult> {
+  if (!Number.isFinite(retentionDays) || retentionDays <= 0) {
+    throw new Error(`runRetention: invalid retentionDays (${retentionDays})`);
+  }
+
   const cutoff = now - retentionDays * 86_400;
 
   return {

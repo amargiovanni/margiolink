@@ -65,4 +65,9 @@ describe("runRetention", () => {
     expect(result.sessions).toBe(1);
     expect(result.loginAttempts).toBe(1);
   });
+
+  it("rejects a non-finite or non-positive retention window", async () => {
+    await expect(runRetention(env.DB, NOW, Number.NaN)).rejects.toThrow();
+    await expect(runRetention(env.DB, NOW, 0)).rejects.toThrow();
+  });
 });
