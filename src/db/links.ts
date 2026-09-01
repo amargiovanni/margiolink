@@ -234,3 +234,11 @@ export async function listLinks(
 
   return { items: results, total: totalRow?.total ?? 0 };
 }
+
+export async function countRecentLinks(db: D1Database, since: number): Promise<number> {
+  const row = await db
+    .prepare("SELECT COUNT(*) AS total FROM links WHERE created_at >= ?")
+    .bind(since)
+    .first<{ total: number }>();
+  return row?.total ?? 0;
+}

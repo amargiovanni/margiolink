@@ -3,6 +3,7 @@ import qrcode from "qrcode-generator";
 import { z } from "zod";
 import { requireSession } from "../../auth/middleware";
 import {
+  countRecentLinks,
   createLink,
   findById,
   type LinkRow,
@@ -62,6 +63,9 @@ const assignTagsSchema = z.object({
   tagIds: z.array(z.number().int().positive()).max(20),
 });
 
+const CREATION_LIMIT_PER_HOUR = 120;
+const CREATION_WINDOW_SECONDS = 3600;
+
 export const links = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
 
 links.use("*", requireSession);
@@ -91,6 +95,13 @@ links.post("/", async (c) => {
   if (!parsed.success) return c.json({ error: "invalid_body" }, 400);
 
   const input = parsed.data;
+
+  const windowStart = Math.floor(Date.now() / 1000) - CREATION_WINDOW_SECONDS;
+  if ((await countRecentLinks(c.env.DB, windowStart)) >= CREATION_LIMIT_PER_HOUR) {
+    return c.json({ error: "rate_limited" }, 429, {
+      "retry-after": String(CREATION_WINDOW_SECONDS),
+    });
+  }
 
   const destination = validateTargetUrl(input.targetUrl, c.env.SHORT_DOMAIN);
   if (!destination.ok) return c.json({ error: destination.error }, 422);
