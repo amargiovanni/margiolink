@@ -13,5 +13,14 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true
   },
+  // This project is checked with its own `tsc --noEmit` invocation (see
+  // `typecheck` in package.json) rather than being wired into the root
+  // tsconfig via TS project references. `web/` and `src/` share no types —
+  // they only ever talk over HTTP/JSON — so references would buy nothing
+  // here and would cost real machinery (`composite: true` forcing `.d.ts`/
+  // `.tsbuildinfo` output in a repo that is otherwise `noEmit` everywhere).
+  // If that changes — e.g. a shared response-shape module appears — project
+  // references become the right answer and this decision should be
+  // revisited.
   "include": ["src", "vite.config.ts"]
 }
