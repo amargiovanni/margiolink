@@ -227,7 +227,7 @@ export async function listLinks(
 
   const { results } = await db
     .prepare(
-      `SELECT l.* FROM links l ${join} ${clause} ORDER BY l.created_at DESC LIMIT ? OFFSET ?`,
+      `SELECT l.* FROM links l ${join} ${clause} ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?`,
     )
     .bind(...values, limit, offset)
     .all<LinkRow>();
