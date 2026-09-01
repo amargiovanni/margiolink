@@ -210,8 +210,12 @@ mandate that migrations be reversible. Convention:
 
 ```
 migrations/0001_init.sql
-migrations/down/0001_init.down.sql
+rollback/0001_init.down.sql
 ```
+
+The down files live in a sibling directory, not under `migrations/`, because
+the test harness reads `migrations/` wholesale to build the test schema and
+would otherwise treat a down file as a migration.
 
 plus an `npm run db:rollback` script that applies the down file and rewinds the
 `d1_migrations` bookkeeping table. The rollback is executed for real as part of
