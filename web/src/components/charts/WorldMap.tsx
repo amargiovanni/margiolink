@@ -307,6 +307,11 @@ export function WorldMap({ slices }: { slices: CountrySlice[] }) {
   // while one that never receives any never fetches at all.
   const hasData = slices.length > 0;
 
+  // If `hasData` ever flips back to false and then true again (e.g. a
+  // filter change emptying then re-filling the period), this effect reruns
+  // — but a dynamic `import()` of a specifier already loaded resolves
+  // straight from the module cache, so only the very first transition to
+  // `true` ever costs a real network fetch; every later one is free.
   useEffect(() => {
     if (!hasData) return;
     let cancelled = false;
