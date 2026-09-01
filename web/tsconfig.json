@@ -13,12 +13,5 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src", "vite.config.ts"],
-  // Test files are excluded from this project rather than covered by it.
-  // `tokens.test.ts` imports `node:fs` (see its top-of-file note) and typing
-  // that needs `@types/node`, which is not among the packages this task was
-  // authorised to install. Correctness for test files is still verified by
-  // actually running them (`npm test`) and by Biome's non-type-aware lint —
-  // see task-1-report.md for the trade-off this leaves open.
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+  "include": ["src", "vite.config.ts"]
 }

@@ -1,15 +1,8 @@
-// @vitest-environment node
-//
-// This test only reads a CSS file from disk; it renders nothing. Under jsdom,
-// the global `URL` is jsdom's own WHATWG-URL polyfill, which cannot resolve a
-// relative path against a `file:` base and silently falls back to jsdom's
-// default document origin (`http://localhost:3000/...`) — so
-// `readFileSync(new URL(...))` fails with "The URL must be of scheme file".
-// Running this one file under the plain Node environment avoids the clash.
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-
-const css = readFileSync(new URL("./tokens.css", import.meta.url), "utf8");
+// Vite's `?raw` import returns the file's contents as a string, typed by
+// `vite/client` (already in this project's `types`) — no Node type
+// declarations needed, and no environment override to read a file from disk.
+import css from "./tokens.css?raw";
 
 // Exactly the values spec §6.3 records as validated. Changing one means
 // re-running the palette validator, not editing this test.

@@ -37,6 +37,11 @@ export default defineConfig({
           include: ["web/src/**/*.test.{ts,tsx}"],
           setupFiles: ["./web/src/test-setup.ts"],
           globals: true,
+          // Vitest's own default (`css: { include: [] }`) replaces every CSS
+          // import — including a `?raw` one — with an empty string to skip
+          // processing it; `tokens.test.ts` reads `tokens.css` this way, so
+          // without this it silently gets `""` instead of the file's content.
+          css: { include: [/\.css/] },
         },
       },
     ],
