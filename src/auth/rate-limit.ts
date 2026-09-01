@@ -1,5 +1,26 @@
 const MAX_ATTEMPTS = 8;
 const WINDOW_SECONDS = 900;
+
+/**
+ * Lockout durations for the 1st, 2nd and 3rd+ round of exhausted attempts.
+ *
+ * **The last two steps are only reachable inside a single UTC day, by design.**
+ * Every key passed to this module is derived from `ipHash` (the admin login) or
+ * from `ipHash` plus a slug (the link-password interstitial), and `ipHash` uses
+ * the same daily-rotating HMAC key as `visitorHash`: at UTC midnight the same
+ * client hashes to a different key, finds no `login_attempts` row, and is
+ * allowed again. So the effective ceiling on any lockout is "until the next UTC
+ * midnight" — a client locked out at 23:50 is locked out for ten minutes, and
+ * the 1-hour and 24-hour steps are reached only by a client that keeps failing
+ * within one UTC day.
+ *
+ * That is the deliberate trade: the rotation that stops a visitor being
+ * followed across days is the same mechanism that stops a lockout persisting
+ * across them. Extending the lockout would mean keying the throttle on an
+ * identifier that outlives the day, which is exactly the persistent identifier
+ * the privacy design refuses. See
+ * `compliance/legitimate-interest-assessment.md` §3.
+ */
 const LOCK_STEPS = [900, 3600, 86_400];
 
 interface AttemptRow {

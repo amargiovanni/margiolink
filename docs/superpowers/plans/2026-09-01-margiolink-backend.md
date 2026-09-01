@@ -6170,8 +6170,13 @@ Every column in the `clicks` table, with its classification and basis. The test
 in `test/compliance.test.ts` fails if a column exists in the schema and not here.
 
 **Controller:** the operator of link.margio.uk
-**Retention:** 180 days for every row below, then deletion. Aggregates in
-`click_daily` and `click_daily_dim` hold counts only and are not personal data.
+**Retention:** 180 days for every row below, then deletion. `click_daily` holds
+a count of clicks/uniques/bots per link per day; `click_daily_dim` holds a count
+grouped by one dimension's value — a city name, a referrer host, a browser name
+— retained indefinitely alongside that count. Both remain non-personal not
+because the value is absent, but because no individual is identifiable in either
+table: the rows are grouped counts with no visitor identifier and no
+row-per-person structure. `compliance/data-map.md` is the authoritative wording.
 **Legal basis for all of the below:** Article 6(1)(f) — see
 `legitimate-interest-assessment.md`.
 

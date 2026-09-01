@@ -1,3 +1,30 @@
+/**
+ * Statistics API.
+ *
+ * Two limits of these responses are not surfaced to a consumer, and the
+ * dashboard has to account for both:
+ *
+ * 1. **A range extending past the retention window silently under-reports.**
+ *    Every endpoint here reads raw `clicks` only. Rows older than
+ *    `RAW_RETENTION_DAYS` have been deleted by `src/cron/retention.ts`, so a
+ *    query covering them returns a smaller number that looks exactly like a
+ *    complete one. The aggregate tables written for this case
+ *    (`click_daily`, `click_daily_dim`) are not consulted, and no response
+ *    carries a "truncated at" marker.
+ * 2. **Summed daily `uniques` over-count a returning visitor.** `uniques` is
+ *    `COUNT(DISTINCT visitor_hash)`, and the hash rotates at UTC midnight by
+ *    design, so a visitor returning on three days counts three times over a
+ *    multi-day range — in `summary`, in `dimension`, and in `timeseries` at
+ *    day and week granularity. This is the accepted consequence of the privacy
+ *    design, not a bug, but the response is a bare integer with no field the
+ *    dashboard could hang an honest label on.
+ *
+ * Both are recorded here rather than fixed because the fix — a `meta` block
+ * naming the oldest retained timestamp, whether the range was truncated, and
+ * that uniques are daily-distinct — changes the response shape the dashboard
+ * will consume, and belongs with the dashboard work that reads it.
+ */
+
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireSession } from "../../auth/middleware";

@@ -84,7 +84,12 @@ This is the reason the simple approach is not a dead end.
 - **Daily cron** — delete raw clicks past the retention window; purge expired
   admin sessions and stale login-attempt rows.
 
-Aggregate tables are kept indefinitely: they hold counts, not personal data.
+Aggregate tables are kept indefinitely: `click_daily` holds a count of clicks/uniques/bots per link per day, and
+`click_daily_dim` holds a count grouped by one dimension's value — a city
+name, a referrer host, a browser name. Both are retained indefinitely, and
+both remain non-personal not because the value is absent but because no
+individual is identifiable in either table: the rows are grouped counts with no
+visitor identifier and no row-per-person structure. `compliance/data-map.md` is the authoritative wording.
 
 ---
 
@@ -270,7 +275,12 @@ The daily key is derived from a Worker secret and the date; nothing is stored.
 ### 4.3 Minimisation and retention
 
 - Raw `clicks` rows: **180 days**, then deleted by the daily cron.
-- Aggregates: indefinite (counts only, no personal data).
+- Aggregates: indefinite. `click_daily` holds a count of clicks/uniques/bots per link per day, and
+`click_daily_dim` holds a count grouped by one dimension's value — a city
+name, a referrer host, a browser name. Both are retained indefinitely, and
+both remain non-personal not because the value is absent but because no
+individual is identifiable in either table: the rows are grouped counts with no
+visitor identifier and no row-per-person structure. `compliance/data-map.md` is the authoritative wording.
 - City-level geography is the finest granularity kept; latitude/longitude
   available from `request.cf` is deliberately not stored.
 

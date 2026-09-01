@@ -82,6 +82,18 @@ being tracked. The processing:
 - is disclosed in a public notice at `/privacy`
   (`src/routes/public.ts`), reachable without authentication.
 
+The daily rotation cuts both ways, and the trade is deliberate. The
+brute-force throttle in `src/auth/rate-limit.ts` — which protects the admin
+login and the link-password interstitial — keys on `ipHash`, the same
+daily-rotating HMAC as `visitor_hash`, so a lockout cannot outlive the UTC day
+in which it started: its 1-hour and 24-hour escalation steps are reachable only
+within one day, and the effective ceiling on any lockout is the next UTC
+midnight. Making the throttle stronger would mean keying it on an identifier
+that persists across days, which is precisely the persistent identifier this
+assessment relies on not existing. The privacy property and the security
+property trade against each other here, and the balance is struck in favour of
+the privacy property.
+
 A visitor following a short link would not reasonably object to a count being
 kept of that click when nothing about them persists beyond a day. The
 residual risk is low and the balance favours the controller.
