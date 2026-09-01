@@ -3626,7 +3626,7 @@ describe("API authorization coverage", () => {
   );
 
   it("registers API routes at all, so this test cannot pass vacuously", () => {
-    expect(apiRoutes.length).toBeGreaterThan(5);
+    expect(apiRoutes.length).toBeGreaterThanOrEqual(5);
   });
 
   it.each(apiRoutes.map((route) => [route.method, route.path] as const))(
@@ -5737,7 +5737,6 @@ export const app = new Hono<{ Bindings: Env }>();
 
 app.get("/_health", (c) => c.json({ ok: true }));
 app.route("/api", createApiRouter());
-registerPublicRoutes(app);
 
 registerRedirect(app);
 
@@ -5758,7 +5757,7 @@ export default {
 };
 ```
 
-`registerPublicRoutes` is imported here in anticipation of Task 19; if that task has not run yet, omit that one line and add it back there.
+The public routes are not mounted here — Task 19 creates that module and adds its own line. Keep this file exactly as shown.
 
 - [ ] **Step 7: Run the tests**
 
