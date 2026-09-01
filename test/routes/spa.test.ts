@@ -18,6 +18,66 @@ describe("the dashboard shell", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
   });
+
+  /**
+   * `/app` returning HTML proves nothing about whether the *scripts that
+   * HTML references* can actually be fetched. A wrong Vite `base` would
+   * still produce a valid document — one pointing at URLs that 404 — and
+   * every other test here would stay green while the dashboard rendered as
+   * a blank page. This walks the built markup itself rather than assuming
+   * a URL shape.
+   *
+   * The built references are root-relative (`/assets/...`), not under
+   * `/app/`: Cloudflare's static-asset router serves `web/dist/**` at the
+   * site root with no extra prefix, so `web/dist/assets/x.js` answers to
+   * `/assets/x.js`, never `/app/assets/x.js` — nothing on disk maps to that
+   * path, so a request for it would fall through to the Worker's `/app/*`
+   * catch-all and get served the shell's own HTML instead of the script,
+   * 200 and wrong content. `assets` is reserved in `src/lib/slug.ts`
+   * specifically so a short link can never collide with this path.
+   *
+   * The asset fetches below go through `env.ASSETS.fetch` directly, not
+   * `SELF.fetch`. Confirmed by direct test: `SELF.fetch` in this harness
+   * invokes the Worker's exported `fetch` handler only — it does not
+   * simulate Cloudflare's "static assets are served before the Worker runs"
+   * behaviour (even `SELF.fetch(".../index.html")`, a real top-level file,
+   * 404s through it). `env.ASSETS.fetch` is the binding the Worker itself
+   * would be given in production, so it answers the question this test
+   * actually needs answered — does the built reference correspond to a
+   * real file — without depending on routing behaviour this harness
+   * doesn't reproduce.
+   */
+  it("serves module scripts and stylesheets that actually resolve", async () => {
+    const shell = await SELF.fetch("https://link.test/app");
+    const body = await shell.text();
+
+    const isDefined = (value: string | undefined): value is string => value !== undefined;
+    const scriptSrcs = [...body.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)]
+      .map((m) => m[1])
+      .filter(isDefined);
+    const stylesheetHrefs = [...body.matchAll(/<link[^>]*\brel="stylesheet"[^>]*\shref="([^"]+)"/g)]
+      .map((m) => m[1])
+      .filter(isDefined);
+
+    // Anti-vacuity guard: without this, a regex that matched nothing would
+    // let the assertions below pass by iterating over empty arrays.
+    expect(scriptSrcs.length).toBeGreaterThan(0);
+    expect(stylesheetHrefs.length).toBeGreaterThan(0);
+
+    for (const src of scriptSrcs) {
+      expect(src.startsWith("/assets/")).toBe(true);
+      const res = await env.ASSETS.fetch(new URL(src, "https://link.test/"));
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("javascript");
+    }
+
+    for (const href of stylesheetHrefs) {
+      expect(href.startsWith("/assets/")).toBe(true);
+      const res = await env.ASSETS.fetch(new URL(href, "https://link.test/"));
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("css");
+    }
+  });
 });
 
 describe("the shell does not shadow the Worker", () => {

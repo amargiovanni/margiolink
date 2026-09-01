@@ -24,6 +24,14 @@
   --color-series-7: #9085e9;
   --color-series-8: #e66767;
 
+  /* A ramp slot indexes magnitude, not lightness: slot 1 is always the
+     lowest value in the data, slot 5 always the highest, in every theme.
+     What changes between themes is which luminance "lowest" maps to — on
+     this near-black surface a low value sits dark, close to the surface;
+     on the warm paper below a low value sits pale, close to the paper.
+     Same semantics, opposite luminance, because the surfaces are opposite.
+     A consumer should always map its smallest bucket to slot 1, in both
+     themes — never re-sort by lightness. */
   --color-ramp-1: #1e4d7e;
   --color-ramp-2: #3670ae;
   --color-ramp-3: #5c95ce;
@@ -57,6 +65,9 @@
     --color-series-6: #008300;
     --color-series-7: #4a3aa7;
     --color-series-8: #e34948;
+    /* Slot still means magnitude, not lightness — see the comment on the
+       dark ramp above. Slot 1 is the lowest value; it just sits pale here
+       instead of dark, because the surface it sits near is pale too. */
     --color-ramp-1: #7fadd8;
     --color-ramp-2: #4e8fcb;
     --color-ramp-3: #2a6fb5;
@@ -83,6 +94,8 @@
   --color-series-6: #008300;
   --color-series-7: #4a3aa7;
   --color-series-8: #e34948;
+  /* Slot still means magnitude, not lightness — see the comment on the dark
+     ramp in the @theme block above. */
   --color-ramp-1: #7fadd8;
   --color-ramp-2: #4e8fcb;
   --color-ramp-3: #2a6fb5;
