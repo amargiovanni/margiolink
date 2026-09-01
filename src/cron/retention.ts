@@ -12,6 +12,11 @@ export interface RetentionResult {
    * the data is still there, but nothing is aggregating it.
    */
   skippedDays: string[];
+  /**
+   * True when the batched delete hit its iteration cap with rows still past the
+   * window — the backlog is not draining in one nightly run.
+   */
+  clicksCapped: boolean;
 }
 
 export async function runRetention(
@@ -36,10 +41,21 @@ export async function runRetention(
     );
   }
 
+  const clicks = await deleteClicksBefore(db, cutoff);
+  if (clicks.capped) {
+    // The next run continues where this one stopped, but a cap reached night
+    // after night means the backlog is growing faster than it drains.
+    console.warn(
+      "retention: hit the delete batch cap with raw clicks still past the window",
+      clicks.deleted,
+    );
+  }
+
   return {
-    clicks: await deleteClicksBefore(db, cutoff),
+    clicks: clicks.deleted,
     sessions: await deleteExpiredSessions(db, now),
     loginAttempts: await deleteStaleLoginAttempts(db, now),
     skippedDays,
+    clicksCapped: clicks.capped,
   };
 }

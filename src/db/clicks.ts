@@ -105,12 +105,56 @@ export async function unaggregatedDaysBefore(db: D1Database, ts: number): Promis
   return results.map((row) => row.day);
 }
 
-export async function deleteClicksBefore(db: D1Database, ts: number): Promise<number> {
-  const result = await db
-    .prepare(`DELETE FROM clicks WHERE ts < ? AND ${DAY_WAS_ROLLED_UP}`)
-    .bind(ts)
-    .run();
-  return result.meta.changes ?? 0;
+/** Rows removed per DELETE statement. */
+export const CLICK_DELETE_BATCH_SIZE = 5_000;
+
+/** Upper bound on statements per call, so one run cannot loop unboundedly. */
+export const CLICK_DELETE_MAX_BATCHES = 100;
+
+export interface ClickDeletion {
+  /** Rows actually deleted, summed across every batch. */
+  deleted: number;
+  /** True when the iteration cap stopped the run with rows still to delete. */
+  capped: boolean;
+}
+
+/**
+ * Delete raw clicks older than `ts`, in bounded batches.
+ *
+ * A single unbounded `DELETE` deletes an entire backlog in one statement, so
+ * after any period in which the daily cron did not run it must delete
+ * everything at once. If that exceeds D1's per-statement limits it fails, and
+ * it fails identically every night thereafter — the job never makes partial
+ * progress, and personal data is kept past its stated window with only a
+ * console line as evidence. Batching means each run makes progress even when
+ * it cannot finish.
+ */
+export async function deleteClicksBefore(
+  db: D1Database,
+  ts: number,
+  batchSize: number = CLICK_DELETE_BATCH_SIZE,
+  maxBatches: number = CLICK_DELETE_MAX_BATCHES,
+): Promise<ClickDeletion> {
+  const statement = db.prepare(
+    `DELETE FROM clicks
+     WHERE id IN (
+       SELECT id FROM clicks WHERE ts < ?1 AND ${DAY_WAS_ROLLED_UP} LIMIT ?2
+     )`,
+  );
+
+  let deleted = 0;
+
+  for (let batch = 0; batch < maxBatches; batch++) {
+    const result = await statement.bind(ts, batchSize).run();
+    const changes = result.meta.changes ?? 0;
+    deleted += changes;
+
+    // A short batch means the backlog is drained: there was nothing left to
+    // fill it. Checking this rather than re-counting saves a query per batch.
+    if (changes < batchSize) return { deleted, capped: false };
+  }
+
+  return { deleted, capped: true };
 }
 
 export async function recentClicks(db: D1Database, limit: number): Promise<ClickFeedRow[]> {
