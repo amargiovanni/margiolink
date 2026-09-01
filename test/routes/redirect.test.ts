@@ -167,6 +167,15 @@ describe("password-protected links", () => {
     expect((await clickRows()).at(-1)?.outcome).toBe("redirect");
   });
 
+  it("posts the form back to the stored slug, not the one taken from the URL", async () => {
+    await createProtected("hunter2");
+
+    const res = await SELF.fetch("https://link.test/SECRET", { redirect: "manual" });
+
+    expect(res.status).toBe(401);
+    expect(await res.text()).toContain('action="/secret"');
+  });
+
   it("lets a holder of a valid cookie through without asking again", async () => {
     await createProtected("hunter2");
 

@@ -51,10 +51,24 @@ describe("visitorHash", () => {
     expect(a).not.toBe(b);
   });
 
-  it("returns 32 hex characters and never the input", async () => {
-    const hash = await visitorHash(SECRET, "1.2.3.4", "UA/1", "abc", DAY_ONE);
+  it("returns 32 hex characters and leaks none of its inputs", async () => {
+    // The claim this stands behind is that no input to the hash — not the IP,
+    // not the raw user-agent (the highest-entropy of the three), not the slug —
+    // can be read back out of the value that reaches storage.
+    const ip = "203.0.113.9";
+    const ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/140.0.0.0 Safari/537.36";
+    const slug = "quarterly-report";
+
+    const hash = await visitorHash(SECRET, ip, ua, slug, DAY_ONE);
+
     expect(hash).toMatch(/^[0-9a-f]{32}$/);
-    expect(hash).not.toContain("1.2.3.4");
+    expect(hash).not.toContain(ip);
+    expect(hash).not.toContain(ua);
+    expect(hash).not.toContain("Macintosh");
+    expect(hash).not.toContain("Chrome");
+    expect(hash).not.toContain(slug);
+    expect(hash).not.toContain("quarterly");
+    expect(hash).not.toContain(SECRET);
   });
 });
 

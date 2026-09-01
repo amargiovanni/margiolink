@@ -53,6 +53,12 @@ button { width: 100%; margin-top: 16px; padding: 11px; font-size: 1rem; font-wei
 </html>`;
 }
 
+/**
+ * `slug` must be the slug from the stored `links` row, not the one parsed out
+ * of the URL. It is the only attacker-influenced value this file emits into
+ * HTML, and taking it from the row keeps the reason it is safe local to this
+ * file instead of resting on `findBySlug` having matched.
+ */
 function passwordPage(slug: string, error: boolean): string {
   return page(
     "Password required",
@@ -130,7 +136,7 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
       const allowed = token ? await verifyLinkToken(secret, slug, token, now) : false;
       if (!allowed) {
         record("password_required");
-        return c.html(passwordPage(slug, false), 401);
+        return c.html(passwordPage(link.slug, false), 401);
       }
     }
 
@@ -167,7 +173,7 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
       // `password_failed` rather than a new outcome value: the schema's set is
       // consumed by the dashboard, and this is a failed password attempt.
       recordFailure();
-      return c.html(passwordPage(slug, true), 429, {
+      return c.html(passwordPage(link.slug, true), 429, {
         "retry-after": String(limit.retryAfter),
       });
     }
@@ -180,7 +186,7 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
     if (!correct) {
       await registerLoginFailure(c.env.DB, throttleKey, now);
       recordFailure();
-      return c.html(passwordPage(slug, true), 401);
+      return c.html(passwordPage(link.slug, true), 401);
     }
 
     await clearLoginFailures(c.env.DB, throttleKey);
