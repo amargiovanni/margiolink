@@ -1,10 +1,12 @@
 # Data Map — MargioLink
 
 Every column in the `clicks` table, with its classification and basis. The
-test in `test/compliance.test.ts` fails if a column exists in the schema and
-not here — it walks `PRAGMA table_info(clicks)` against the live D1 schema in
-`migrations/0001_init.sql`, so this table cannot silently drift from what is
-actually stored.
+test in `test/compliance.test.ts` compares the column names in the first cell
+of the `clicks` table below against `PRAGMA table_info(clicks)` on the live D1
+schema, as an exact set in both directions: a column added to the schema and
+not documented here fails, and so does a column left documented here after the
+schema drops it. Only the first cell of each row is read, so a name mentioned
+in prose elsewhere in this file cannot pass a column off as documented.
 
 **Controller:** the operator of link.margio.uk
 **Retention:** 180 days for every row below (`RAW_RETENTION_DAYS` in
