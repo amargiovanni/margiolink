@@ -9,9 +9,13 @@ actually stored.
 **Controller:** the operator of link.margio.uk
 **Retention:** 180 days for every row below (`RAW_RETENTION_DAYS` in
 `wrangler.jsonc`), then deletion by `runRetention` in `src/cron/retention.ts`,
-which the `30 3 * * *` cron trigger runs once daily. Aggregates in
-`click_daily` and `click_daily_dim` hold counts only, identify nobody, and are
-kept indefinitely.
+which the `30 3 * * *` cron trigger runs once daily. `click_daily` holds a
+count of clicks/uniques/bots per link per day. `click_daily_dim` holds a count
+grouped by one dimension's **value** — a city name, a referrer host, a browser
+name, and so on — retained indefinitely alongside that count. Both remain
+non-personal not because the value is absent, but because no individual is
+identifiable in either table: the rows are grouped counts with no visitor
+identifier and no row-per-person structure.
 **Legal basis for all of the below:** Article 6(1)(f) — see
 `legitimate-interest-assessment.md`.
 **Status:** drafted by Claude against the schema and the code that writes to
@@ -33,7 +37,7 @@ pending human sign-off.
 | `continent`, `country`, `region`, `city` | Yes, in combination | Geographic reach of a link; city is the finest granularity kept |
 | `timezone` | Yes, in combination | Local-time analysis of when links are followed |
 | `asn_org` | Yes, in combination | Network operator (`request.cf.asOrganization`), to separate mobile from fixed-line traffic |
-| `colo` | No | Cloudflare datacenter that served the request; operational |
+| `colo` | No | Cloudflare datacenter that served the request; operational. This is the most arguable "No" in this table — `colo` is a geographic signal, but a coarser one than the `city` and `country` already classified as personal data above: dozens of visitors across a wide catchment area share one datacenter, and it identifies Cloudflare's routing, not the visitor's location |
 | `device_type`, `os`, `os_version` | Yes, in combination | Which devices the audience uses |
 | `browser`, `browser_version` | Yes, in combination | Which browsers the audience uses |
 | `language` | Yes, in combination | Audience language (`Accept-Language`, first value), for content decisions |
