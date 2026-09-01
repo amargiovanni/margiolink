@@ -58,7 +58,7 @@ web/
     │   │   ├── TimeSeries.tsx     area/bar with crosshair and tooltip
     │   │   ├── Heatmap.tsx        hour by weekday, sequential ramp
     │   │   └── WorldMap.tsx       choropleth, lazy-loaded
-    │   ├── layout/                AppShell, SideNav, BottomNav, ThemeToggle
+    │   ├── layout/                AppShell, PrimaryNav, ThemeToggle
     │   └── links/                 LinkRow, LinkForm, LinkDialog, QrPanel,
     │                              TagPicker, CommandPalette
     └── pages/
@@ -1176,7 +1176,7 @@ git commit -m "feat(web): add the API client, query hooks and the login screen"
 ## Task 3: The application shell
 
 **Files:**
-- Create: `web/src/components/layout/AppShell.tsx`, `SideNav.tsx`, `BottomNav.tsx`, `ThemeToggle.tsx`, `web/src/lib/theme.ts`
+- Create: `web/src/components/layout/AppShell.tsx`, `PrimaryNav.tsx`, `ThemeToggle.tsx`, `web/src/lib/theme.ts`
 - Modify: `web/src/App.tsx`
 - Test: `web/src/components/layout/AppShell.test.tsx`, `web/src/lib/theme.test.ts`
 
@@ -1326,7 +1326,7 @@ describe("AppShell", () => {
 
 - [ ] **Step 4: Write the shell**
 
-`AppShell` composes: a visually-hidden-until-focused skip link targeting `#main`; `SideNav` (hidden below `lg`); a `<main id="main" tabIndex={-1}>`; `BottomNav` (hidden at `lg` and above). Both navs render from one shared array of sections so the labels cannot drift apart, and both mark the active route with `aria-current="page"` as well as with the accent colour — spec §6.4's rule that nothing is carried by colour alone applies to navigation too.
+`AppShell` composes: a visually-hidden-until-focused skip link targeting `#main`; one `PrimaryNav`; and a `<main id="main" tabIndex={-1}>`. The nav marks the active route with `aria-current="page"` as well as with the accent colour — spec §6.4's rule that nothing is carried by colour alone applies to navigation too.
 
 The section list:
 
@@ -1339,7 +1339,28 @@ export const SECTIONS = [
 ] as const;
 ```
 
-Only one `<nav>` carries `aria-label="Primary"` at a time — render the sidebar's on desktop and the bottom bar's on mobile via CSS, but give the bottom bar `aria-label="Primary"` too and hide the inactive one from the accessibility tree with `aria-hidden` plus `hidden` so the test finds exactly one.
+**Render exactly one `<nav aria-label="Primary">`**, and let CSS decide whether
+it sits as a rail on the left or as a bar along the bottom. Two `<nav>` elements
+with the same label, one hidden by a media query, would be ambiguous to the test
+and to a screen reader: jsdom applies no media queries, so both would be present
+in the accessibility tree and `getByRole("navigation", { name: /primary/i })`
+would throw on finding two. One element, two layouts:
+
+```tsx
+<nav
+  aria-label="Primary"
+  className="
+    fixed inset-x-0 bottom-0 z-10 flex justify-around border-t border-rule
+    bg-surface-raised px-2 py-1
+    lg:static lg:h-full lg:w-56 lg:flex-col lg:justify-start lg:gap-1
+    lg:border-t-0 lg:border-r lg:px-3 lg:py-4
+  "
+>
+```
+
+Each item shows its icon always and its label always — the label is `sr-only`
+nowhere. A bottom bar with icon-only items is a guessing game, and the labels
+are short enough to fit.
 
 `ThemeToggle` is a three-state control (System / Light / Dark) built on Radix `DropdownMenu`, labelled, and calling `storeTheme` + `applyTheme`.
 
