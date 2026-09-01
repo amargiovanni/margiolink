@@ -1,0 +1,137 @@
+import { useEffect, useState } from "react";
+import { LinkRow } from "../components/links/LinkRow";
+import { Button } from "../components/ui/Button";
+import { EmptyState } from "../components/ui/EmptyState";
+import { Field } from "../components/ui/Field";
+import { Select } from "../components/ui/Select";
+import { useLinks, useSparklines, useTags } from "../lib/queries";
+
+const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 250;
+
+const STATUS_OPTIONS = [
+  { value: "all", label: "All statuses" },
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+  { value: "expired", label: "Expired" },
+];
+
+/** The working list — spec §6.1. Search asks the API rather than filtering
+ *  the current page in the browser: the list is paginated and the browser
+ *  only ever holds one page of it, so a client-side filter would silently
+ *  search a subset and look like it worked. */
+export default function Links() {
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
+  const [tagId, setTagId] = useState("all");
+  const [limit, setLimit] = useState(PAGE_SIZE);
+
+  // Debounced into the query key: the fetch only fires once typing settles
+  // for 250ms, rather than once per keystroke. A filter change also resets
+  // whatever page depth the reader had reached — done here and in the two
+  // Select handlers below, rather than in a separate effect keyed on their
+  // values, since a reset that only sets state (never reads the values it
+  // is "triggered by") has nothing for exhaustive-deps to check.
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      setSearch(searchInput);
+      setLimit(PAGE_SIZE);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(id);
+  }, [searchInput]);
+
+  function handleStatusChange(value: string) {
+    setStatus(value);
+    setLimit(PAGE_SIZE);
+  }
+
+  function handleTagChange(value: string) {
+    setTagId(value);
+    setLimit(PAGE_SIZE);
+  }
+
+  const linksQuery = useLinks({
+    search: search || undefined,
+    status: status === "all" ? undefined : status,
+    tagId: tagId === "all" ? undefined : Number(tagId),
+    limit,
+    offset: 0,
+  });
+  const tagsQuery = useTags();
+  const sparklinesQuery = useSparklines(7);
+
+  const tagOptions = [
+    { value: "all", label: "All tags" },
+    ...(tagsQuery.data?.tags.map((tag) => ({ value: String(tag.id), label: tag.name })) ?? []),
+  ];
+
+  const links = linksQuery.data?.links ?? [];
+  const total = linksQuery.data?.total ?? 0;
+  const series = sparklinesQuery.data?.series ?? {};
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="font-display text-3xl text-ink">Links</h1>
+        {/* Inert for this task — Task 10 wires the create dialog. */}
+        <Button aria-label="New link">New link</Button>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <Field id="links-search" label="Search" className="flex-1">
+          <input
+            type="search"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder="Search by slug, title or destination"
+            className="w-full rounded border border-rule bg-surface px-3 py-2 text-ink placeholder:text-ink-faint"
+          />
+        </Field>
+        <Field id="links-status" label="Status">
+          <Select
+            value={status}
+            onValueChange={handleStatusChange}
+            options={STATUS_OPTIONS}
+            aria-label="Status"
+          />
+        </Field>
+        <Field id="links-tag" label="Tag">
+          <Select
+            value={tagId}
+            onValueChange={handleTagChange}
+            options={tagOptions}
+            aria-label="Tag"
+          />
+        </Field>
+      </div>
+
+      {linksQuery.isError ? (
+        <p role="alert" className="text-sm text-critical">
+          Could not load links. Try again.
+        </p>
+      ) : linksQuery.isPending ? (
+        <p className="text-sm text-ink-muted">Loading links…</p>
+      ) : links.length === 0 ? (
+        <EmptyState
+          title="No links yet"
+          description="Use New link above to create your first short link."
+        />
+      ) : (
+        <div className="flex flex-col">
+          {links.map((link) => (
+            <LinkRow key={link.id} link={link} sparkline={series[String(link.id)] ?? []} />
+          ))}
+        </div>
+      )}
+
+      {links.length > 0 && links.length < total && (
+        <div className="flex justify-center pt-2">
+          <Button variant="ghost" onClick={() => setLimit((current) => current + PAGE_SIZE)}>
+            Load more
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
