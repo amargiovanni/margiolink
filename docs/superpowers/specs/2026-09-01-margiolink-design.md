@@ -445,6 +445,10 @@ are not negotiable:
 
 - Thin marks; 4px rounded ends on bars, anchored to the baseline; 2px lines;
   markers at least 8px; a 2px surface gap between adjacent or stacked fills.
+  The 8px minimum governs marks a reader must distinguish or target in an
+  interactive chart. It does not govern the sparkline's end dot, which is a
+  position indicator on a form that has no interaction, no legend and no
+  tooltip — at 28px tall, an 8px dot would dominate the shape it annotates.
 - One y-axis. Never two scales on one chart — two measures of different
   magnitude become two charts or an indexed pair.
 - Colour follows the entity, never its rank: filtering a series out must not
