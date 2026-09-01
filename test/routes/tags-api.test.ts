@@ -146,4 +146,14 @@ describe("tags", () => {
     expect(body.links).toHaveLength(1);
     expect(body.links[0]?.tags).toEqual([]);
   });
+
+  it("returns an empty link list when a filter matches nothing", async () => {
+    await createLinkViaApi("no-match");
+
+    const res = await api("/api/links?search=nonexistent-slug-xyz");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { links: unknown[]; total: number };
+    expect(body.links).toEqual([]);
+    expect(body.total).toBe(0);
+  });
 });
