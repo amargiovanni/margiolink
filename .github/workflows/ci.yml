@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+# A newer push to the same branch makes the older run irrelevant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, types, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Cheapest checks first, so an obvious failure does not wait on the suite.
+      - name: Lint and format
+        run: npm run check
+
+      - name: Type check
+        run: npm run typecheck
+
+      # Runs inside workerd against a real local D1 database. No Cloudflare
+      # credentials and no .dev.vars are needed: the test bindings live in
+      # vitest.config.ts.
+      - name: Tests
+        run: npm test
+
+  migrations:
+    name: Migration rollback
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Applies every migration, rolls the newest one back, and checks the
+      # schema both changed and came back identical. A migration added without
+      # a working down file fails here rather than in production.
+      - name: Verify the newest migration is reversible
+        run: npm run db:verify-rollback

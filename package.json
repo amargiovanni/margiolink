@@ -1,8 +1,17 @@
 {
   "name": "margiolink",
   "version": "0.1.0",
+  "description": "URL shortener with privacy-preserving click analytics, on Cloudflare Workers and D1",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amargiovanni/margiolink.git"
+  },
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
@@ -14,7 +23,8 @@
     "db:migrate:local": "wrangler d1 migrations apply margiolink --local",
     "db:migrate": "wrangler d1 migrations apply margiolink --remote",
     "db:rollback:local": "node scripts/rollback.mjs --local",
-    "db:rollback": "node scripts/rollback.mjs --remote"
+    "db:rollback": "node scripts/rollback.mjs --remote",
+    "db:verify-rollback": "node scripts/verify-rollback.mjs"
   },
   "dependencies": {
     "bowser": "^2.14.1",
