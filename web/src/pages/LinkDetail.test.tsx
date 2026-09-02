@@ -122,7 +122,7 @@ describe("LinkDetail", () => {
     const before = summaryCalls();
     const beforeFrom = before.at(-1)?.searchParams.get("from");
 
-    await userEvent.click(screen.getByRole("button", { name: "30 days" }));
+    await userEvent.click(screen.getByRole("radio", { name: "30 days" }));
 
     await waitFor(() => {
       const after = summaryCalls();
@@ -164,8 +164,8 @@ describe("LinkDetail", () => {
     renderDetail();
     await screen.findByText("demo");
 
-    expect(screen.queryByRole("button", { name: "12 months" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "90 days" })).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "12 months" })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "90 days" })).toBeInTheDocument();
     expect(screen.getByText(/180-day retention window/i)).toBeInTheDocument();
   });
 

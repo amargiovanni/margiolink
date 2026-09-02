@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useParams } from "react-router";
-import { ChartFrame } from "../components/charts/ChartFrame";
+import { ChartFrame, chartStatus } from "../components/charts/ChartFrame";
 import { HEATMAP_CELLS, Heatmap } from "../components/charts/Heatmap";
 import { LiveFeed } from "../components/charts/LiveFeed";
 import { RankedBars } from "../components/charts/RankedBars";
@@ -8,15 +8,11 @@ import { StatTile } from "../components/charts/StatTile";
 import { TimeSeries } from "../components/charts/TimeSeries";
 import { CopyButton } from "../components/links/CopyButton";
 import { QrPanel } from "../components/links/QrPanel";
+import { PeriodPicker } from "../components/PeriodPicker";
 import { ApiError } from "../lib/api";
-import { useDimension, useLink, useMeta, useSummary, useTimeseries } from "../lib/queries";
-import {
-  droppedPeriodsNote,
-  granularityFor,
-  type PeriodId,
-  periodsFor,
-  rangeFor,
-} from "../lib/ranges";
+import { useDimension, useLink, useSummary, useTimeseries } from "../lib/queries";
+import { granularityFor, rangeFor } from "../lib/ranges";
+import { usePeriodSelection } from "../lib/usePeriodSelection";
 
 type Slice = { value: string; clicks: number; uniques: number };
 type DimensionQuery = ReturnType<typeof useDimension>;
@@ -73,7 +69,7 @@ function DimensionPanel({
       title={title}
       description={description}
       table={toTable(title, slices)}
-      status={query.isError ? "error" : query.isPending ? "pending" : undefined}
+      status={chartStatus(query)}
       errorMessage="Could not load this breakdown."
     >
       {query.isError ? (
@@ -100,21 +96,7 @@ function DimensionPanel({
 export default function LinkDetail() {
   const { id } = useParams<{ id: string }>();
   const linkId = Number(id);
-  const [periodId, setPeriodId] = useState<PeriodId>("7d");
-  const metaQuery = useMeta();
-  const retentionDays = metaQuery.data?.retentionDays;
-  const periods = retentionDays !== undefined ? periodsFor(retentionDays) : [];
-  const periodNote = retentionDays !== undefined ? droppedPeriodsNote(retentionDays) : null;
-
-  // Same guard as Overview's — see the comment there. A period retention no
-  // longer supports must not stay silently selected once the deployment's
-  // real retention is known.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: only a change in the known retention window should re-run this — `periods` is a fresh array every render (recomputed from `periodsFor`) and `periodId` is this same effect's own target, so listing either would re-run it every render or fight the very state it sets.
-  useEffect(() => {
-    if (retentionDays === undefined) return;
-    if (periods.some((p) => p.id === periodId)) return;
-    setPeriodId(periods.at(-1)?.id ?? "7d");
-  }, [retentionDays]);
+  const { periodId, setPeriodId, periods, periodNote, metaQuery } = usePeriodSelection("7d");
 
   const linkQuery = useLink(linkId);
 
@@ -200,23 +182,7 @@ export default function LinkDetail() {
             <p className="text-xs text-ink-muted">Loading period options…</p>
           ) : (
             <>
-              <fieldset aria-label="Period" className="m-0 flex flex-wrap gap-1 border-0 p-0">
-                {periods.map((period) => (
-                  <button
-                    key={period.id}
-                    type="button"
-                    aria-pressed={period.id === periodId}
-                    onClick={() => setPeriodId(period.id)}
-                    className={`rounded border px-3 py-1.5 text-sm transition-colors ${
-                      period.id === periodId
-                        ? "border-accent bg-accent text-accent-ink"
-                        : "border-rule text-ink-muted hover:text-ink"
-                    }`}
-                  >
-                    {period.label}
-                  </button>
-                ))}
-              </fieldset>
+              <PeriodPicker value={periodId} onChange={setPeriodId} periods={periods} />
               {periodNote && <p className="text-xs text-ink-faint">{periodNote}</p>}
             </>
           )}
@@ -270,9 +236,7 @@ export default function LinkDetail() {
             bucket.uniques,
           ]),
         }}
-        status={
-          timeseriesQuery.isError ? "error" : timeseriesQuery.isPending ? "pending" : undefined
-        }
+        status={chartStatus(timeseriesQuery)}
         errorMessage="Could not load the time series."
       >
         {timeseriesQuery.isError ? (
@@ -290,7 +254,7 @@ export default function LinkDetail() {
         title="Activity by hour"
         description="Clicks by day of week and hour."
         table={toTable("Hour", hourlyQuery.data?.slices ?? [])}
-        status={hourlyQuery.isError ? "error" : hourlyQuery.isPending ? "pending" : undefined}
+        status={chartStatus(hourlyQuery)}
         errorMessage="Could not load the heatmap."
       >
         {hourlyQuery.isError ? (

@@ -124,12 +124,10 @@ interface ElementExpectations {
    *  exception is `QrPanel`'s QR code, fetched from the API, which only
    *  `LinkDetail` renders. */
   images: "some" | "none";
-  /** `input`/`select`/`textarea`/`[role='combobox']`. `LinkDetail`'s period
-   *  selector is a `<fieldset>` of plain `<button>`s (not native radios —
-   *  contrast `PeriodPicker`, which Overview uses), and its other controls
-   *  are all buttons too, so it has none. `Settings`' session list and
-   *  About group are read-only text plus buttons — no inputs anywhere on
-   *  that page either. */
+  /** `input`/`select`/`textarea`/`[role='combobox']`. `Overview` and
+   *  `LinkDetail` both render `PeriodPicker`'s native radios. `Settings`'
+   *  session list and About group are read-only text plus buttons — no
+   *  inputs anywhere on that page. */
   formControls: "some" | "none";
   /** `[tabindex]`. The only explicit `tabIndex` in this app is
    *  `TimeSeries`'s crosshair overlay (`tabIndex={0}`) — every other
@@ -249,7 +247,7 @@ const PAGES: ({
     },
     ready: () => screen.findByText("demo"),
     images: "some", // QrPanel's QR code <img>
-    formControls: "none", // period selector here is plain buttons, not radios
+    formControls: "some", // PeriodPicker's native radios (shared with Overview)
     tabbable: "some", // TimeSeries's crosshair
     charts: "some",
   },

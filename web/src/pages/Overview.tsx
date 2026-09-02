@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link as RouterLink } from "react-router";
-import { ChartFrame } from "../components/charts/ChartFrame";
+import { ChartFrame, chartStatus } from "../components/charts/ChartFrame";
 import { HEATMAP_CELLS, Heatmap } from "../components/charts/Heatmap";
 import { RankedBars } from "../components/charts/RankedBars";
 import { StatTile } from "../components/charts/StatTile";
@@ -8,21 +8,9 @@ import { TimeSeries } from "../components/charts/TimeSeries";
 import { WorldMap } from "../components/charts/WorldMap";
 import { PeriodPicker } from "../components/PeriodPicker";
 import { formatCount } from "../lib/format";
-import {
-  type Range,
-  useDimension,
-  useMeta,
-  useSummary,
-  useTimeseries,
-  useTopLinks,
-} from "../lib/queries";
-import {
-  droppedPeriodsNote,
-  granularityFor,
-  type PeriodId,
-  periodsFor,
-  rangeFor,
-} from "../lib/ranges";
+import { type Range, useDimension, useSummary, useTimeseries, useTopLinks } from "../lib/queries";
+import { granularityFor, rangeFor } from "../lib/ranges";
+import { usePeriodSelection } from "../lib/usePeriodSelection";
 
 const UNIQUES_HINT =
   "A visitor returning on several days is counted once per day — the privacy design rotates their code at midnight.";
@@ -52,7 +40,7 @@ function DimensionPanel({
     <ChartFrame
       title={title}
       table={toTable(title, query.data?.slices ?? [])}
-      status={query.isError ? "error" : query.isPending ? "pending" : undefined}
+      status={chartStatus(query)}
       errorMessage="Could not load this breakdown."
     >
       {query.isError ? (
@@ -87,7 +75,7 @@ function TopLinksPanel({ range }: { range: Range }) {
         columns: ["Link", "Clicks", "Uniques"],
         rows: links.map((l) => [l.title || l.slug, l.clicks, l.uniques]),
       }}
-      status={query.isError ? "error" : query.isPending ? "pending" : undefined}
+      status={chartStatus(query)}
       errorMessage="Could not load top links."
     >
       {query.isError ? (
@@ -188,25 +176,7 @@ function BotShareTile({
  * reached and bot share pass no `spark` rather than a fabricated two-point
  * line drawn from `current`/`previous` — see the task brief. */
 export default function Overview() {
-  const [periodId, setPeriodId] = useState<PeriodId>("7d");
-  const metaQuery = useMeta();
-  const retentionDays = metaQuery.data?.retentionDays;
-  const periods = retentionDays !== undefined ? periodsFor(retentionDays) : [];
-  const periodNote = retentionDays !== undefined ? droppedPeriodsNote(retentionDays) : null;
-
-  // Once the deployment's real retention is known, a previously-selected
-  // period that retention no longer supports (e.g. "12m" against a shorter
-  // window than when the page first rendered) must not stay silently
-  // selected — that would keep fetching the exact false comparison this
-  // guard exists to prevent. Falls back to the longest period retention
-  // still supports, defaulting to the picker's own initial choice, "7d",
-  // when nothing does.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: only a change in the known retention window should re-run this — `periods` is a fresh array every render (recomputed from `periodsFor`) and `periodId` is this same effect's own target, so listing either would re-run it every render or fight the very state it sets.
-  useEffect(() => {
-    if (retentionDays === undefined) return;
-    if (periods.some((p) => p.id === periodId)) return;
-    setPeriodId(periods.at(-1)?.id ?? "7d");
-  }, [retentionDays]);
+  const { periodId, setPeriodId, periods, periodNote, metaQuery } = usePeriodSelection("7d");
 
   const { from, to } = rangeFor(periodId);
   const range = useMemo(() => ({ from, to }), [from, to]);
@@ -290,9 +260,7 @@ export default function Overview() {
           columns: ["Bucket", "Clicks", "Uniques"],
           rows: buckets.map((bucket) => [bucket.bucket, bucket.clicks, bucket.uniques]),
         }}
-        status={
-          timeseriesQuery.isError ? "error" : timeseriesQuery.isPending ? "pending" : undefined
-        }
+        status={chartStatus(timeseriesQuery)}
         errorMessage="Could not load the time series."
       >
         {timeseriesQuery.isError ? (
@@ -312,7 +280,7 @@ export default function Overview() {
         <ChartFrame
           title="Clicks by country"
           table={toTable("Country", countryQuery.data?.slices ?? [])}
-          status={countryQuery.isError ? "error" : countryQuery.isPending ? "pending" : undefined}
+          status={chartStatus(countryQuery)}
           errorMessage="Could not load the map."
         >
           {countryQuery.isError ? (
@@ -334,7 +302,7 @@ export default function Overview() {
         title="Activity by hour"
         description="Clicks by day of week and hour."
         table={toTable("Hour", hourlyQuery.data?.slices ?? [])}
-        status={hourlyQuery.isError ? "error" : hourlyQuery.isPending ? "pending" : undefined}
+        status={chartStatus(hourlyQuery)}
         errorMessage="Could not load the heatmap."
       >
         {hourlyQuery.isError ? (
