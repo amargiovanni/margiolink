@@ -52,6 +52,29 @@ export default defineConfig({
   testDir: ".",
   globalSetup: "./seed.ts",
   fullyParallel: true,
+
+  // Serial on CI, parallel locally. Every spec talks to ONE `wrangler dev`,
+  // and workerd is single-threaded — so parallel browser contexts do not
+  // share a load, they queue behind each other on a shared runner with a
+  // fraction of a developer machine's cores. The first CI run of this suite
+  // after `delete-restore.spec.ts` landed showed exactly that: the QR decode
+  // took 40.8s against 16.5s locally and the delete-restore flow 31.4s
+  // against 0.9s, both past the 30s default, with workerd logging broken
+  // pipes as Playwright abandoned requests it had already given up on.
+  //
+  // The whole suite runs in ~23s locally, so serialising costs a little wall
+  // clock and buys back the entire class of cross-spec interference on one
+  // shared Worker. Locally, leave it parallel: a developer machine has the
+  // cores for it and the feedback loop matters more there.
+  workers: process.env.CI ? 1 : undefined,
+
+  // The default 30s is a developer-machine number. Nothing here is slow by
+  // design — the QR test decodes a 1024px image inside the browser, which is
+  // genuinely CPU-bound — so a slower runner needs headroom rather than a
+  // weaker assertion. Raised only on CI, so a local test that takes this long
+  // still fails and gets looked at.
+  timeout: process.env.CI ? 60_000 : 30_000,
+
   // CI is the one place a `reuseExistingServer` webServer would silently hide
   // a startup failure behind someone else's leftover process.
   forbidOnly: !!process.env.CI,
