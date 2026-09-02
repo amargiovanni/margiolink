@@ -2989,12 +2989,54 @@ git commit -m "feat(web): add the link detail page with every dimension"
 
 **Files:**
 - Create: `web/src/pages/Overview.tsx`, `web/src/components/PeriodPicker.tsx`
-- Modify: `web/src/App.tsx`
-- Test: `web/src/pages/Overview.test.tsx`, `web/src/components/PeriodPicker.test.tsx`
+- Modify: `web/src/App.tsx`, `web/src/lib/queries.ts`, `src/db/stats.ts`, `src/routes/api/stats.ts`
+- Test: `web/src/pages/Overview.test.tsx`, `web/src/components/PeriodPicker.test.tsx`, `test/routes/stats-api.test.ts`
 
 **Interfaces:**
 - Consumes: `PERIODS`, `rangeFor`, `granularityFor` (Task 7); `StatTile`, `TimeSeries`, `RankedBars`, `WorldMap`, `Heatmap`.
-- Produces: the `/` route; `<PeriodPicker value onChange>`.
+- Produces: the `/` route; `<PeriodPicker value onChange>`; `useTopLinks(range, limit)`.
+
+- [ ] **Step 0: Give the top-links panel a real data source**
+
+The grid below calls for a "top links" panel, and nothing can currently answer
+it. `DIMENSION_COLUMNS` has no link dimension, `/api/links` carries no click
+count and cannot sort by one, and `useSparklines` is a fixed trailing-N-days
+window that ignores the period picker entirely — using it would show one period's
+ranking under another period's heading.
+
+Add `topLinks(db, range, limit)` to `src/db/stats.ts`:
+
+```sql
+SELECT l.id AS id, l.slug AS slug, l.title AS title,
+       COUNT(*) AS clicks,
+       COUNT(DISTINCT c.visitor_hash) AS uniques
+FROM clicks c
+JOIN links l ON l.id = c.link_id
+WHERE c.ts >= ? AND c.ts < ? AND c.is_bot = 0 AND l.deleted_at IS NULL
+GROUP BY l.id
+ORDER BY clicks DESC, l.slug ASC
+LIMIT ?
+```
+
+Write the WHERE clause out rather than reusing `scope()`. That helper emits bare
+`ts` and `link_id`, which happen to be unambiguous under this join today only
+because `links` has neither column — a fragile thing to depend on, and it also
+has a `linkId` branch that makes no sense for a ranking across links.
+
+Soft-deleted links are excluded deliberately. A top-N list never sums to the
+period total anyway, so their absence introduces no discrepancy a reader could
+misread, and every row in this panel links to a detail page that a deleted link
+does not have.
+
+Expose it at `/api/stats/top-links`, parsing the same `from`/`to` the other stats
+routes take and a `limit` bounded like `/dimension`'s. Then add
+`useTopLinks(range, limit)` to `web/src/lib/queries.ts`, with the range in the
+query key.
+
+Worker tests in `test/routes/stats-api.test.ts`: ranks by click count within the
+window; excludes clicks outside it; excludes bot clicks; excludes soft-deleted
+links; and breaks ties by slug so the order is deterministic. Write them so each
+fails if its clause is dropped.
 
 Layout, top to bottom: the period picker; a row of four stat tiles (clicks, unique visitors, countries reached, bot share) each with a delta against the preceding window; the time series; then a two-column grid holding top links, the world map, devices and channels; then the heatmap full width.
 
