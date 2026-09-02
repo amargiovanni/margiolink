@@ -1,6 +1,7 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { version } from "../package.json" with { type: "json" };
 
 export default defineConfig({
   // `build:web` runs this config with `--config web/vite.config.ts` from the
@@ -27,6 +28,15 @@ export default defineConfig({
   // wrong content, and every status-code-only test would still pass.
   base: "/",
   plugins: [react(), tailwindcss()],
+  // Baked into the built JS as a literal at build time — see
+  // `vite-env.d.ts` for the declaration and the About group in
+  // `src/pages/Settings.tsx` for where it's read. Not served by the API
+  // (`GET /api/meta`, `src/routes/api/meta.ts`): the version a reader wants
+  // here is the one in the assets they're looking at, not one a Worker that
+  // could be a step ahead or behind that build might report.
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,

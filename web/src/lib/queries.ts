@@ -43,12 +43,18 @@ export interface Slice {
   uniques: number;
 }
 
+export interface Meta {
+  retentionDays: number;
+  shortDomain: string;
+}
+
 export const keys = {
   links: (params?: unknown) => ["links", params ?? {}] as const,
   link: (id: number) => ["link", id] as const,
   tags: () => ["tags"] as const,
   sessions: () => ["sessions"] as const,
   stats: (kind: string, params: unknown) => ["stats", kind, params] as const,
+  meta: () => ["meta"] as const,
 };
 
 export function useLinks(params: {
@@ -74,6 +80,15 @@ export function useLink(id: number) {
 
 export function useTags() {
   return useQuery({ queryKey: keys.tags(), queryFn: () => api.get<{ tags: Tag[] }>("/api/tags") });
+}
+
+/** The two facts about this deployment the dashboard cannot derive from
+ *  anything else it already fetches — see Step 0's note in
+ *  `src/routes/api/meta.ts`. The build version is deliberately not part of
+ *  this: it comes from `__APP_VERSION__` instead (`vite-env.d.ts`), injected
+ *  at build time rather than served over the network. */
+export function useMeta() {
+  return useQuery({ queryKey: keys.meta(), queryFn: () => api.get<Meta>("/api/meta") });
 }
 
 export function useSummary(range: Range) {
@@ -276,4 +291,33 @@ export function useRevokeSession() {
 
 export function useRevokeAllSessions() {
   return useMutation({ mutationFn: () => api.del("/api/auth/sessions") });
+}
+
+/** `/api/links` is paginated at this size (`src/db/links.ts`'s own default),
+ *  matched here rather than invented, so a page boundary in the export lines
+ *  up with a page boundary the API actually has. */
+const EXPORT_PAGE_SIZE = 50;
+
+/** Pages through the whole links list for the Settings CSV export, rather
+ *  than exporting whatever the first `/api/links` page returns. A caller
+ *  settling for one page would hand back a file that looks complete and
+ *  silently is not once there are more than `EXPORT_PAGE_SIZE` links — the
+ *  worst shape of wrong, because nothing about the file says it is
+ *  incomplete. This throws (propagating `ApiError` or a network failure)
+ *  the moment any page fails, on purpose: the caller must not fall back to
+ *  writing out whatever rows it collected before the failure as if that
+ *  were the whole list. */
+export async function fetchAllLinksForExport(): Promise<Link[]> {
+  const all: Link[] = [];
+  let offset = 0;
+  for (;;) {
+    const page = await api.get<{ links: Link[]; total: number }>("/api/links", {
+      limit: EXPORT_PAGE_SIZE,
+      offset,
+    });
+    all.push(...page.links);
+    if (page.links.length === 0 || all.length >= page.total) break;
+    offset += EXPORT_PAGE_SIZE;
+  }
+  return all;
 }

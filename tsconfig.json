@@ -10,7 +10,12 @@
     "noEmit": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    // `vitest.config.ts` imports `./package.json` for its `version` field,
+    // to mirror `web/vite.config.ts`'s build-time version injection under
+    // the "web" test project — off by default under every
+    // `moduleResolution` mode, not implied by "Bundler".
+    "resolveJsonModule": true
   },
   "include": ["src", "test", "scripts", "*.ts", "*.d.ts"]
 }

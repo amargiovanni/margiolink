@@ -11,7 +11,11 @@
     "noEmit": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    // `vite.config.ts` imports `../package.json` for its `version` field
+    // (Step 0's build-time version injection) — off by default under every
+    // `moduleResolution` mode, not implied by "Bundler".
+    "resolveJsonModule": true
   },
   // This project is checked with its own `tsc --noEmit` invocation (see
   // `typecheck` in package.json) rather than being wired into the root

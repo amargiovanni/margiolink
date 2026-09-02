@@ -5,6 +5,8 @@ import LinkDetail from "./pages/LinkDetail";
 import Links from "./pages/Links";
 import Login from "./pages/Login";
 import Overview from "./pages/Overview";
+import Settings from "./pages/Settings";
+import Tags from "./pages/Tags";
 
 function Placeholder() {
   return <h1 className="font-display text-3xl">MargioLink</h1>;
@@ -40,6 +42,26 @@ export default function App() {
           <RequireSession>
             <AppShell>
               <LinkDetail />
+            </AppShell>
+          </RequireSession>
+        }
+      />
+      <Route
+        path="/tags"
+        element={
+          <RequireSession>
+            <AppShell>
+              <Tags />
+            </AppShell>
+          </RequireSession>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <RequireSession>
+            <AppShell>
+              <Settings />
             </AppShell>
           </RequireSession>
         }

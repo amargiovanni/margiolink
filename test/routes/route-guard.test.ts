@@ -18,7 +18,13 @@ const EXPECTED_PUBLIC_API_ROUTES = ["POST /api/auth/login"];
  * by identity of the handler, never by a blanket `method !== "ALL"` filter,
  * which would also hide a genuine `all()` handler from this test.
  */
-const EXPECTED_SESSION_MIDDLEWARE_PATHS = ["/api/*", "/api/links/*", "/api/tags/*", "/api/stats/*"];
+const EXPECTED_SESSION_MIDDLEWARE_PATHS = [
+  "/api/*",
+  "/api/links/*",
+  "/api/tags/*",
+  "/api/stats/*",
+  "/api/meta/*",
+];
 
 /**
  * Every route outside `/api`, all of them intentionally reachable without a
