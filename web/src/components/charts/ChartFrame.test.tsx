@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { ChartFrame } from "./ChartFrame";
+import { ChartFrame, chartStatus } from "./ChartFrame";
 
 const table = {
   columns: ["Country", "Clicks"],
@@ -14,7 +14,7 @@ const table = {
 describe("ChartFrame", () => {
   it("names the chart with a heading", () => {
     render(
-      <ChartFrame title="Clicks by country" table={table}>
+      <ChartFrame title="Clicks by country" table={table} status="success">
         <svg aria-hidden="true" />
       </ChartFrame>,
     );
@@ -23,7 +23,7 @@ describe("ChartFrame", () => {
 
   it("offers a table view for every chart", async () => {
     render(
-      <ChartFrame title="Clicks by country" table={table}>
+      <ChartFrame title="Clicks by country" table={table} status="success">
         <svg data-testid="plot" aria-hidden="true" />
       </ChartFrame>,
     );
@@ -35,7 +35,7 @@ describe("ChartFrame", () => {
 
   it("returns to the chart", async () => {
     render(
-      <ChartFrame title="Clicks by country" table={table}>
+      <ChartFrame title="Clicks by country" table={table} status="success">
         <svg data-testid="plot" aria-hidden="true" />
       </ChartFrame>,
     );
@@ -53,6 +53,7 @@ describe("ChartFrame", () => {
           { label: "Uniques", color: "var(--color-series-2)" },
         ]}
         table={table}
+        status="success"
       >
         <svg aria-hidden="true" />
       </ChartFrame>,
@@ -67,6 +68,7 @@ describe("ChartFrame", () => {
         title="Clicks"
         series={[{ label: "Clicks", color: "var(--color-series-1)" }]}
         table={table}
+        status="success"
       >
         <svg aria-hidden="true" />
       </ChartFrame>,
@@ -76,7 +78,11 @@ describe("ChartFrame", () => {
 
   it("still renders the real table when the query succeeded, even with no rows", async () => {
     render(
-      <ChartFrame title="Clicks by country" table={{ columns: table.columns, rows: [] }}>
+      <ChartFrame
+        title="Clicks by country"
+        table={{ columns: table.columns, rows: [] }}
+        status="success"
+      >
         <svg aria-hidden="true" />
       </ChartFrame>,
     );
@@ -101,6 +107,36 @@ describe("ChartFrame", () => {
     // Never the same pixels as a real empty result: no table markup at all,
     // not a table with zero rows.
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("requires status — omitting it is a type error, not a silent success default", () => {
+    render(
+      // @ts-expect-error status is required precisely so a ninth call site cannot forget it and silently fall back to "succeeded".
+      <ChartFrame title="Clicks by country" table={table}>
+        <svg aria-hidden="true" />
+      </ChartFrame>,
+    );
+    // The `@ts-expect-error` above is the actual assertion (checked by
+    // `tsc`, not by vitest's transform); this render still succeeds at
+    // runtime because omitted `status` is `undefined`, which matches
+    // neither "error" nor "pending" and falls through to the real table —
+    // the type error is what stands between that and shipping.
+    expect(screen.getByRole("heading", { name: "Clicks by country" })).toBeInTheDocument();
+  });
+
+  describe("chartStatus", () => {
+    it("maps a query's isError/isPending flags onto the three states ChartFrame accepts", () => {
+      expect(chartStatus({ isError: true, isPending: false })).toBe("error");
+      expect(chartStatus({ isError: false, isPending: true })).toBe("pending");
+      expect(chartStatus({ isError: false, isPending: false })).toBe("success");
+    });
+
+    it("treats isError as taking priority over isPending, matching React Query's own settled state", () => {
+      // React Query never actually reports both at once, but the helper's
+      // own branch order is what every call site relies on implicitly —
+      // pinned directly rather than only through that impossible case.
+      expect(chartStatus({ isError: true, isPending: true })).toBe("error");
+    });
   });
 
   it("shows a loading state in the table pane while pending, not an empty table", async () => {

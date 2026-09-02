@@ -6,6 +6,17 @@ export interface SeriesLabel {
   color: string;
 }
 
+export type ChartQueryStatus = "pending" | "error" | "success";
+
+/** Derives `ChartFrame`'s required `status` from a React Query result,
+ *  so every call site computes it the same way rather than re-deriving
+ *  `isError ? "error" : isPending ? "pending" : "success"` (or, worse,
+ *  `undefined`) by hand each time — the one shape a ninth call site could
+ *  get wrong is exactly the shape this exists to make impossible to skip. */
+export function chartStatus(query: { isError: boolean; isPending: boolean }): ChartQueryStatus {
+  return query.isError ? "error" : query.isPending ? "pending" : "success";
+}
+
 export function ChartFrame({
   title,
   description,
@@ -19,9 +30,11 @@ export function ChartFrame({
   description?: string;
   series?: SeriesLabel[];
   table: TableData;
-  /** The state of the query behind both panes. `undefined` (every existing
-   *  caller before this prop existed) means "succeeded" — `table` is real
-   *  data and the table pane renders it as-is.
+  /** The state of the query behind both panes — required, not optional:
+   *  an earlier version defaulted this to "succeeded" when omitted, which
+   *  meant a ninth call site could simply not pass it and silently
+   *  reintroduce the defect this prop exists to close. Every caller now
+   *  computes it with `chartStatus(query)` above.
    *
    *  `table` is always built at the call site as `query.data?.slices ?? []`
    *  or similar, so on a pending or failed query it already arrives here as
@@ -34,7 +47,7 @@ export function ChartFrame({
    *  already makes this distinction per call site; this is the same
    *  distinction, applied to the other pane, so absence and failure are
    *  never the same pixels twice. */
-  status?: "pending" | "error";
+  status: ChartQueryStatus;
   /** Shown in both panes' failed state. Match the chart pane's own message
    *  (passed to `children` separately) so a reader sees one sentence for
    *  one failure, not two different ones depending which pane they're on. */
@@ -103,6 +116,7 @@ export function ChartFrame({
       ) : status === "pending" ? (
         <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
       ) : (
+        // status === "success"
         <TableView {...table} caption={title} />
       )}
     </section>
