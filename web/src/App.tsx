@@ -83,6 +83,15 @@ export default function App() {
           </RequireSession>
         }
       />
+      {/* Deliberately behind `RequireSession`, not in front of it: an
+          anonymous visitor to this private, single-operator dashboard
+          should not be able to tell which paths exist by which ones bounce
+          them to `/login` and which show a distinct "not found" page —
+          every unauthenticated request goes to the login screen regardless
+          of path, which is both simpler and safer than turning this route
+          into a path-enumeration oracle. `NotFound`'s only real audience is
+          an authenticated reader who mistyped a URL. Do not "fix" this by
+          moving the route in front of `RequireSession`. */}
       <Route
         path="/*"
         element={

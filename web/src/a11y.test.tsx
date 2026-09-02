@@ -41,6 +41,29 @@ function dimensionByName(byName: Record<string, unknown>, fallback: unknown = { 
   return (url: URL) => byName[url.searchParams.get("name") ?? ""] ?? fallback;
 }
 
+/** Waits past every panel still showing a pending-query placeholder. Every
+ *  "Loading…" string in this app (grepped across `pages/` and
+ *  `components/`) is conditional on `isPending` and disappears once that
+ *  query settles — there is no permanent copy containing the word — so its
+ *  absence is a reliable "every independent query on this page has
+ *  resolved" signal. This matters because a page's own identifying text is
+ *  sometimes a *static* prop (a `ChartFrame` `title`, for instance) that
+ *  renders on the very first pass, before any stubbed fetch has resolved:
+ *  a `ready()` built only from that text can resolve before the panels
+ *  fed by other, independent queries have populated, understating what the
+ *  sweep actually inspects. Caught in review: `Overview`'s "Clicks by
+ *  country" heading is exactly such a static title, and without this wait
+ *  the sweep below found zero `tabIndex` on `Overview` — not because the
+ *  page has none (`TimeSeries`'s crosshair carries `tabIndex={0}`), but
+ *  because it hadn't finished rendering yet. */
+async function waitForSettled(container: HTMLElement) {
+  await waitFor(() => {
+    expect(container.textContent, "a panel is still showing a Loading placeholder").not.toMatch(
+      /Loading/,
+    );
+  });
+}
+
 afterEach(() => vi.unstubAllGlobals());
 
 function withClient(children: ReactNode) {
@@ -87,17 +110,55 @@ const LINK = {
 const TAGS = { tags: [{ id: 7, name: "spring", color: "#199e70" }] };
 const SPARKLINES = { days: 7, series: { "1": [0, 1, 2, 0, 3, 1, 4] } };
 
+/** "some" — this page is expected to render at least one such element, so
+ *  the corresponding check below asserts a non-zero count *before* looping,
+ *  which fails loudly if a regression (or a broken fixture) empties it out.
+ *  "none" — this page genuinely has none, by its own design, stated here
+ *  explicitly with the reason, rather than left for an empty `for` loop to
+ *  report a silent, unearned pass. No assertion in this suite is allowed to
+ *  pass by matching nothing — every property is either checked against a
+ *  guaranteed-non-empty set, or explicitly marked not applicable. */
+interface ElementExpectations {
+  /** Real `<img>` elements. Every icon in this app (`lucide-react`) and
+   *  every chart renders as inline `<svg>`, never `<img>` — the one
+   *  exception is `QrPanel`'s QR code, fetched from the API, which only
+   *  `LinkDetail` renders. */
+  images: "some" | "none";
+  /** `input`/`select`/`textarea`/`[role='combobox']`. `LinkDetail`'s period
+   *  selector is a `<fieldset>` of plain `<button>`s (not native radios —
+   *  contrast `PeriodPicker`, which Overview uses), and its other controls
+   *  are all buttons too, so it has none. `Settings`' session list and
+   *  About group are read-only text plus buttons — no inputs anywhere on
+   *  that page either. */
+  formControls: "some" | "none";
+  /** `[tabindex]`. The only explicit `tabIndex` in this app is
+   *  `TimeSeries`'s crosshair overlay (`tabIndex={0}`) — every other
+   *  interactive element (buttons, native radios, Radix triggers) is
+   *  natively tabbable with no attribute needed. Only `Overview` and
+   *  `LinkDetail` render a `TimeSeries`. */
+  tabbable: "some" | "none";
+  /** Composite chart marks (`chartMarkElements`, below). `Links`, `Tags`
+   *  and `Settings` render no `ChartFrame` chart at all — a working list, a
+   *  tag manager and a settings page, respectively, none of them plotting
+   *  anything. */
+  charts: "some" | "none";
+}
+
 /** One entry per swept page — adding a page later means adding one line
  *  here, not a new file. `ready` waits for a piece of text that only
  *  appears once the page has settled on its real, loaded content: every
  *  property below is about what a *finished* render looks like, and
  *  asserting against a still-loading page would only prove the loading
- *  state is accessible, which nobody asked. */
-const PAGES: {
+ *  state is accessible, which nobody asked. It is composed with
+ *  `waitForSettled` inside each test below rather than made to do that
+ *  waiting itself, because a page's identifying text is not always a
+ *  reliable proxy for "every query resolved" — see `waitForSettled`'s own
+ *  comment for the case that caught this. */
+const PAGES: ({
   name: string;
   renderPage: () => ReturnType<typeof render>;
   ready: () => Promise<unknown>;
-}[] = [
+} & ElementExpectations)[] = [
   {
     name: "Overview",
     renderPage: () => {
@@ -115,6 +176,10 @@ const PAGES: {
       return render(withClient(<Overview />));
     },
     ready: () => screen.findByText("Clicks by country"),
+    images: "none",
+    formControls: "some", // PeriodPicker's 5 native radios
+    tabbable: "some", // TimeSeries's crosshair
+    charts: "some",
   },
   {
     name: "Links",
@@ -127,6 +192,10 @@ const PAGES: {
       return render(withClient(<Links />));
     },
     ready: () => screen.findByText("demo"),
+    images: "none",
+    formControls: "some", // the search input, the status and tag Selects
+    tabbable: "none",
+    charts: "none",
   },
   {
     name: "LinkDetail",
@@ -177,6 +246,10 @@ const PAGES: {
       );
     },
     ready: () => screen.findByText("demo"),
+    images: "some", // QrPanel's QR code <img>
+    formControls: "none", // period selector here is plain buttons, not radios
+    tabbable: "some", // TimeSeries's crosshair
+    charts: "some",
   },
   {
     name: "Tags",
@@ -185,6 +258,10 @@ const PAGES: {
       return render(withClient(<Tags />));
     },
     ready: () => screen.findByText("spring"),
+    images: "none",
+    formControls: "some", // the create form's name and colour inputs
+    tabbable: "none",
+    charts: "none",
   },
   {
     name: "Settings",
@@ -216,6 +293,10 @@ const PAGES: {
       return render(withClient(<Settings />));
     },
     ready: () => screen.findByText("Safari on iOS"),
+    images: "none",
+    formControls: "none", // sessions and About are read-only text plus buttons
+    tabbable: "none",
+    charts: "none",
   },
 ];
 
@@ -289,93 +370,146 @@ function controlAccessibleName(el: Element): string {
   return title?.trim() ?? "";
 }
 
-describe.each(PAGES)("$name — accessibility sweep (spec §6.2)", ({ renderPage, ready }) => {
-  it("has exactly one <h1>", async () => {
-    const { container } = renderPage();
-    await ready();
-    expect(container.querySelectorAll("h1")).toHaveLength(1);
-  });
+describe.each(PAGES)(
+  "$name — accessibility sweep (spec §6.2)",
+  ({ renderPage, ready, images, formControls, tabbable, charts }) => {
+    it("has exactly one <h1>", async () => {
+      const { container } = renderPage();
+      await ready();
+      await waitForSettled(container);
+      expect(container.querySelectorAll("h1")).toHaveLength(1);
+    });
 
-  it("never skips a heading level", async () => {
-    const { container } = renderPage();
-    await ready();
-    const headings = Array.from(container.querySelectorAll("h1, h2, h3, h4, h5, h6")).map((el) =>
-      Number(el.tagName[1]),
-    );
-    let deepestSoFar = 1;
-    for (const level of headings) {
-      expect(
-        level,
-        `heading level jumped to h${level} without an intervening h${deepestSoFar + 1}`,
-      ).toBeLessThanOrEqual(deepestSoFar + 1);
-      deepestSoFar = Math.max(deepestSoFar, level);
-    }
-  });
-
-  it("gives every <img> alt text, or marks it decorative", async () => {
-    const { container } = renderPage();
-    await ready();
-    for (const img of Array.from(container.querySelectorAll("img"))) {
-      const alt = img.getAttribute("alt");
-      const decorative = img.getAttribute("aria-hidden") === "true";
-      expect(
-        decorative || Boolean(alt?.trim()),
-        `<img src="${img.getAttribute("src")}"> has neither alt text nor aria-hidden`,
-      ).toBe(true);
-    }
-  });
-
-  it("names every form control", async () => {
-    const { container } = renderPage();
-    await ready();
-    const controls = container.querySelectorAll("input, select, textarea, [role='combobox']");
-    for (const control of Array.from(controls)) {
-      if (control.getAttribute("type") === "hidden") continue;
-      expect(
-        controlAccessibleName(control),
-        `<${control.tagName.toLowerCase()}> has no accessible name: ${control.outerHTML}`,
-      ).not.toBe("");
-    }
-  });
-
-  it("names every button", async () => {
-    const { container } = renderPage();
-    await ready();
-    for (const button of Array.from(container.querySelectorAll("button"))) {
-      expect(
-        controlAccessibleName(button),
-        `<button> has no accessible name: ${button.outerHTML}`,
-      ).not.toBe("");
-    }
-  });
-
-  it("uses no positive tabIndex", async () => {
-    const { container } = renderPage();
-    await ready();
-    for (const el of Array.from(container.querySelectorAll("[tabindex]"))) {
-      const value = Number(el.getAttribute("tabindex"));
-      expect(value, `${el.tagName.toLowerCase()} has a positive tabindex`).toBeLessThanOrEqual(0);
-    }
-  });
-
-  it("puts every chart inside a section with an accessible name", async () => {
-    const { container } = renderPage();
-    await ready();
-    await waitFor(() => {
-      // At least one composite chart is expected on every swept page except
-      // Tags and Settings, which carry no chart at all — the assertion loop
-      // below is still meaningful there (zero iterations, vacuously true),
-      // and this length check only guards against the fixture itself
-      // silently failing to render any chart on a page that should have one.
-      const marks = chartMarkElements(container);
-      for (const mark of marks) {
-        const section = mark.closest("section");
-        expect(section, `chart mark outside any <section>: ${mark.outerHTML}`).not.toBeNull();
+    it("never skips a heading level", async () => {
+      const { container } = renderPage();
+      await ready();
+      await waitForSettled(container);
+      const headings = Array.from(container.querySelectorAll("h1, h2, h3, h4, h5, h6")).map((el) =>
+        Number(el.tagName[1]),
+      );
+      // Every page has at least its own <h1> — guaranteed by the check above,
+      // restated here so this loop can never silently run zero times either.
+      expect(headings.length).toBeGreaterThan(0);
+      let deepestSoFar = 1;
+      for (const level of headings) {
         expect(
-          section ? sectionAccessibleName(section) : "",
-          `chart's <section> has no accessible name: ${section?.outerHTML.slice(0, 120)}`,
+          level,
+          `heading level jumped to h${level} without an intervening h${deepestSoFar + 1}`,
+        ).toBeLessThanOrEqual(deepestSoFar + 1);
+        deepestSoFar = Math.max(deepestSoFar, level);
+      }
+    });
+
+    it("gives every <img> alt text, or marks it decorative", async () => {
+      const { container } = renderPage();
+      await ready();
+      await waitForSettled(container);
+      const imgs = Array.from(container.querySelectorAll("img"));
+      if (images === "none") {
+        // Explicit, not an empty loop reporting an unearned pass — see
+        // `ElementExpectations.images` for why this page has none.
+        expect(imgs, "expected no <img> on this page, but found one").toHaveLength(0);
+        return;
+      }
+      expect(imgs.length, "expected at least one <img> on this page, found none").toBeGreaterThan(
+        0,
+      );
+      for (const img of imgs) {
+        const alt = img.getAttribute("alt");
+        const decorative = img.getAttribute("aria-hidden") === "true";
+        expect(
+          decorative || Boolean(alt?.trim()),
+          `<img src="${img.getAttribute("src")}"> has neither alt text nor aria-hidden`,
+        ).toBe(true);
+      }
+    });
+
+    it("names every form control", async () => {
+      const { container } = renderPage();
+      await ready();
+      await waitForSettled(container);
+      const controls = Array.from(
+        container.querySelectorAll("input, select, textarea, [role='combobox']"),
+      ).filter((control) => control.getAttribute("type") !== "hidden");
+      if (formControls === "none") {
+        // Explicit, not an empty loop — see `ElementExpectations.formControls`
+        // for why this page has none.
+        expect(controls, "expected no form controls on this page, but found one").toHaveLength(0);
+        return;
+      }
+      expect(
+        controls.length,
+        "expected at least one form control on this page, found none",
+      ).toBeGreaterThan(0);
+      for (const control of controls) {
+        expect(
+          controlAccessibleName(control),
+          `<${control.tagName.toLowerCase()}> has no accessible name: ${control.outerHTML}`,
         ).not.toBe("");
       }
     });
-  });
-});
+
+    it("names every button", async () => {
+      const { container } = renderPage();
+      await ready();
+      await waitForSettled(container);
+      const buttons = Array.from(container.querySelectorAll("button"));
+      // Every page carries at least one button (a nav action, a "Table"
+      // toggle, a "New link"/"New tag" trigger) — no `ElementExpectations`
+      // field needed, but still asserted so a page that stopped rendering
+      // entirely fails here rather than passing over zero buttons.
+      expect(buttons.length, "expected at least one <button>, found none").toBeGreaterThan(0);
+      for (const button of buttons) {
+        expect(
+          controlAccessibleName(button),
+          `<button> has no accessible name: ${button.outerHTML}`,
+        ).not.toBe("");
+      }
+    });
+
+    it("uses no positive tabIndex", async () => {
+      const { container } = renderPage();
+      await ready();
+      await waitForSettled(container);
+      const withTabIndex = Array.from(container.querySelectorAll("[tabindex]"));
+      if (tabbable === "none") {
+        // Explicit, not an empty loop — see `ElementExpectations.tabbable`
+        // for why this page carries no explicit `tabindex` at all.
+        expect(withTabIndex, "expected no [tabindex] on this page, but found one").toHaveLength(0);
+        return;
+      }
+      expect(
+        withTabIndex.length,
+        "expected at least one [tabindex] on this page, found none",
+      ).toBeGreaterThan(0);
+      for (const el of withTabIndex) {
+        const value = Number(el.getAttribute("tabindex"));
+        expect(value, `${el.tagName.toLowerCase()} has a positive tabindex`).toBeLessThanOrEqual(0);
+      }
+    });
+
+    it("puts every chart inside a section with an accessible name", async () => {
+      const { container } = renderPage();
+      await ready();
+      await waitForSettled(container);
+      await waitFor(() => {
+        const marks = chartMarkElements(container);
+        if (charts === "none") {
+          // Explicit, not an empty loop — see `ElementExpectations.charts`
+          // for why this page renders no composite chart at all.
+          expect(marks, "expected no chart on this page, but found a mark").toHaveLength(0);
+          return;
+        }
+        expect(marks.length, "expected at least one chart mark, found none").toBeGreaterThan(0);
+        for (const mark of marks) {
+          const section = mark.closest("section");
+          expect(section, `chart mark outside any <section>: ${mark.outerHTML}`).not.toBeNull();
+          expect(
+            section ? sectionAccessibleName(section) : "",
+            `chart's <section> has no accessible name: ${section?.outerHTML.slice(0, 120)}`,
+          ).not.toBe("");
+        }
+      });
+    });
+  },
+);
