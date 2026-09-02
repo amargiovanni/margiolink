@@ -1,18 +1,38 @@
 import { defineConfig, devices } from "@playwright/test";
 import { BASE_URL, CREDENTIALS, HASH_SECRET } from "./fixtures";
 
+/** `webServer.command` (below) is a single string handed to `child_process
+ *  .spawn(command, { shell: true })` (confirmed by reading Playwright's own
+ *  runner) — POSIX `/bin/sh -c` locally and in CI (`ubuntu-latest`), which
+ *  parses it exactly like a typed command line: unquoted `$`, backticks,
+ *  spaces and quote characters in an interpolated value are not inert text,
+ *  they are shell syntax. `CREDENTIALS`/`HASH_SECRET` are fixed literals
+ *  today with no such characters, but a value built into a shell command
+ *  string is a loaded gun for whoever next parameterises it from the
+ *  environment — the same family of mistake as the commit-message incident
+ *  in the Task 15 report (unescaped content reaching a shell that parses
+ *  it). `shellQuoteSingle` wraps each value in single quotes, POSIX's own
+ *  "everything inside is literal" quoting, with any embedded single quote
+ *  escaped by closing the quote, emitting an escaped one, and reopening it —
+ *  the standard idiom, since a single-quoted string cannot itself contain a
+ *  single quote. */
+function shellQuoteSingle(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
 /** `wrangler dev`'s `--var KEY:VALUE` overrides a same-named `.dev.vars`
  *  entry (verified interactively — see the comment on `CREDENTIALS` in
  *  `fixtures.ts`), so the suite supplies its own environment on the command
  *  line and never reads or writes `.dev.vars` at all: the local path and the
  *  CI path (which has no `.dev.vars` to begin with) are the same path. */
-const WRANGLER_VARS = [
+const WRANGLER_VARS: [string, string][] = [
   ["ADMIN_USER", CREDENTIALS.username],
   ["ADMIN_PASSWORD", CREDENTIALS.password],
   ["HASH_SECRET", HASH_SECRET],
-]
-  .map(([key, value]) => `--var ${key}:${value}`)
-  .join(" ");
+];
+const WRANGLER_VARS_ARGS = WRANGLER_VARS.map(
+  ([key, value]) => `--var ${key}:${shellQuoteSingle(value)}`,
+).join(" ");
 
 /**
  * End-to-end coverage for what `jsdom` (the `web` Vitest project) structurally
@@ -58,7 +78,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: `npm run build:web && npx wrangler dev --port 8787 --local ${WRANGLER_VARS}`,
+    command: `npm run build:web && npx wrangler dev --port 8787 --local ${WRANGLER_VARS_ARGS}`,
     url: `${BASE_URL}/_health`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

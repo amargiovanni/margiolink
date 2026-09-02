@@ -150,19 +150,35 @@ test.describe("keyboard access — the focus defects (acb7738)", () => {
 
     await page.keyboard.press("Enter"); // opens the row's dropdown menu — focus lands on Edit
     // A fixed count of ArrowDown presses (Edit -> QR code -> Deactivate ->
-    // Delete) was flaky: Radix's roving-focus update does not always land
-    // before the next keydown fires. Pressing until Delete actually reports
-    // focused — bounded, so a reordered or renamed menu still fails loudly
-    // rather than hanging — is the same reasoning as `tabUntil` above.
+    // Delete) was flaky: Radix's roving-focus update runs asynchronously
+    // after the keydown (its own effect, not synchronous with the event),
+    // so a press fired before the previous one's update has landed reaches
+    // whichever item was *still* focused and does nothing useful. A named
+    // race, not a guess: removing the wait this comment used to describe as
+    // "lets Radix's update land" and replacing it with nothing reproduced
+    // the failure on 5 out of 5 stress-test runs — confirming it was
+    // load-bearing — so it is named and waited for properly below instead
+    // of padded with a fixed sleep, which would either not be long enough
+    // on a slower runner or waste time on a faster one.
     const deleteItem = page.getByRole("menuitem", { name: "Delete" });
     let deleteFocused = false;
     for (let i = 0; i < 6; i++) {
-      if (await deleteItem.evaluate((el) => el === document.activeElement)) {
+      const focusedText = await page.evaluate(() => document.activeElement?.textContent ?? null);
+      if (focusedText === "Delete") {
         deleteFocused = true;
         break;
       }
       await page.keyboard.press("ArrowDown");
-      await page.waitForTimeout(100); // lets Radix's roving-focus update land
+      // Waits for the actual effect of the press — the focused item's text
+      // changing — rather than a fixed delay: resolves the moment Radix's
+      // update commits, whether that takes one frame or several.
+      await page.waitForFunction(
+        (previousText) => document.activeElement?.textContent !== previousText,
+        focusedText,
+      );
+    }
+    if (!deleteFocused) {
+      deleteFocused = await deleteItem.evaluate((el) => el === document.activeElement);
     }
     expect(deleteFocused, "ArrowDown never settled focus on the Delete menu item").toBe(true);
 
