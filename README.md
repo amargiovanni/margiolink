@@ -353,9 +353,25 @@ creation limit is hit.
 | `POST` | `/api/tags` | `{name, color}` — colour must be `#rrggbb` |
 | `DELETE` | `/api/tags/:id` | Detaches from links; does not delete them |
 
+### Deployment facts
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `GET` | `/api/meta` | `{retentionDays, shortDomain}` — the Worker's own `RAW_RETENTION_DAYS` and `SHORT_DOMAIN` |
+
+`retentionDays` is a number, not the environment's string. The dashboard's
+Settings page states the retention window as a read-only fact and names this as
+its source: a figure the client invented would drift silently from the one the
+deletion job actually enforces, which for a privacy claim is worse than showing
+nothing.
+
 ### Statistics
 
-All take `from` and `to` as unix seconds, plus optional `linkId`.
+The first four take `from` and `to` as unix seconds, plus an optional `linkId`
+that scopes every figure to one link. `top-links` takes the range but no
+`linkId` — it ranks *across* links, so scoping it to one would be meaningless,
+and the parameter is deliberately absent from its schema rather than accepted
+and ignored. `sparklines` takes neither: it is a fixed trailing window.
 
 | Method | Path | Notes |
 | --- | --- | --- |
@@ -363,6 +379,7 @@ All take `from` and `to` as unix seconds, plus optional `linkId`.
 | `GET` | `/api/stats/timeseries` | `&granularity=hour\|day\|week` |
 | `GET` | `/api/stats/dimension` | `&name=<dimension>&limit=` (max 100) |
 | `GET` | `/api/stats/live` | `?limit=` (max 200) — recent clicks |
+| `GET` | `/api/stats/top-links` | `&limit=` — links ranked by clicks in the window. Excludes soft-deleted links; ties break on slug so the order is stable between refreshes |
 | `GET` | `/api/stats/sparklines` | `?days=` (max 90) — per-link daily counts |
 
 Dimensions: `country`, `city`, `device`, `os`, `browser`, `referrer_type`,
