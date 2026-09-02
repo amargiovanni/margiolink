@@ -15,8 +15,25 @@ import {
   useSparklines,
 } from "../lib/queries";
 
+// Excel, LibreOffice and Google Sheets all treat a cell whose first
+// character is one of these as a formula (or, for tab/CR, a DDE call) the
+// instant the file is opened — this is CSV/formula injection (OWASP). A
+// leading single quote forces every one of them to read the cell as literal
+// text instead. This matters here specifically because the exported fields
+// include a link's title and destination URL, both editable and not
+// necessarily typed by the operator, and an exported CSV is exactly the
+// kind of file that gets mailed to someone else and opened on their
+// machine, with their permissions — `=HYPERLINK(...)` or a DDE call fires
+// there, not here.
+const FORMULA_TRIGGER = /^[=+\-@\t\r]/;
+
+function neutraliseFormula(value: string): string {
+  return FORMULA_TRIGGER.test(value) ? `'${value}` : value;
+}
+
 function csvField(value: string): string {
-  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  const safe = neutraliseFormula(value);
+  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
 const CSV_HEADER = [
@@ -55,7 +72,12 @@ function buildLinksCsv(links: Link[], clicksByLinkId: Map<number, number> | null
 }
 
 function triggerDownload(csv: string, filename: string) {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  // A leading UTF-8 BOM: without it, Excel on Windows guesses the file's
+  // encoding from content alone and gets it wrong for anything outside
+  // ASCII — a tag or title with an accented or non-Latin character (a real
+  // possibility; nothing here restricts either to ASCII) renders as
+  // mojibake instead of the character actually stored.
+  const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   try {
     const anchor = document.createElement("a");

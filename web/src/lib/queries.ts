@@ -290,7 +290,11 @@ export function useRevokeSession() {
 }
 
 export function useRevokeAllSessions() {
-  return useMutation({ mutationFn: () => api.del("/api/auth/sessions") });
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: () => api.del("/api/auth/sessions"),
+    onSuccess: () => invalidate("sessions"),
+  });
 }
 
 /** `/api/links` is paginated at this size (`src/db/links.ts`'s own default),

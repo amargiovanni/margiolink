@@ -128,6 +128,33 @@ describe("Settings", () => {
     ).toBe(false);
   });
 
+  it("drops revoked sessions from the list once 'Revoke all other sessions' succeeds", async () => {
+    // A revoked session that keeps showing as active is the worst possible
+    // answer to "did that work?" — it invites a retry rather than trust.
+    let revoked = false;
+    stub({
+      ...BASE_ROUTES,
+      "GET /api/auth/sessions": () =>
+        Response.json({
+          sessions: revoked ? [CURRENT_SESSION] : [CURRENT_SESSION, OTHER_SESSION],
+        }),
+      "DELETE /api/auth/sessions": () => {
+        revoked = true;
+        return Response.json({ ok: true });
+      },
+    });
+    renderSettings();
+    await screen.findByText("Safari on iOS");
+
+    await userEvent.click(screen.getByRole("button", { name: "Revoke all other sessions" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Revoke all" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Safari on iOS")).not.toBeInTheDocument();
+    });
+  });
+
   it("shows the retention window as a read-only fact naming where it's set", async () => {
     stub(BASE_ROUTES);
     renderSettings();
@@ -140,7 +167,7 @@ describe("Settings", () => {
     expect(within(dataSection).queryByRole("spinbutton", { name: /retention/i })).toBeNull();
   });
 
-  it("exports what the API returns, paging through every page of links", async () => {
+  it("exports what the API returns, paging through every page of links, with the click-count column filled in", async () => {
     stub({
       ...BASE_ROUTES,
       "GET /api/links": (url: URL) => {
@@ -157,8 +184,62 @@ describe("Settings", () => {
     await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalled());
     const blob = (URL.createObjectURL as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as Blob;
     const text = await blob.text();
-    expect(text).toContain("launch");
-    expect(text).toContain("https://example.com/launch");
+    const [headerLine, ...rowLines] = text.replace(/^﻿/, "").split("\r\n");
+    const header = headerLine?.split(",") ?? [];
+    const clicksColumn = header.indexOf("clicks_last_7_days");
+    expect(clicksColumn).toBeGreaterThanOrEqual(0);
+
+    const row = rowLines.find((line) => line.includes("launch"))?.split(",") ?? [];
+    expect(row).toContain("https://example.com/launch");
+    // BASE_ROUTES' sparklines series for link id 1 is [0, 1, 2, 0, 3, 1, 4],
+    // which sums to 11 — pinning the value, not just the column's presence,
+    // so a wrong sum (e.g. always 0, or the wrong link's series) still fails
+    // this even though the column itself exists.
+    expect(row[clicksColumn]).toBe("11");
+  });
+
+  it("neutralises a field that would otherwise be read as a formula on open", async () => {
+    const injected = { ...LINK, title: "=1+1" };
+    stub({
+      ...BASE_ROUTES,
+      "GET /api/links": (url: URL) => {
+        const offset = Number(url.searchParams.get("offset") ?? "0");
+        if (offset === 0) return Response.json({ links: [injected], total: 1 });
+        return Response.json({ links: [], total: 1 });
+      },
+    });
+    renderSettings();
+    await screen.findByText("Chrome on macOS");
+
+    await userEvent.click(screen.getByRole("button", { name: /export/i }));
+
+    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalled());
+    const blob = (URL.createObjectURL as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as Blob;
+    const text = await blob.text();
+    // The literal title never appears un-neutralised: every occurrence of
+    // "=1+1" in the file is preceded by the defusing single quote.
+    expect(text).not.toMatch(/(?<!')=1\+1/);
+    expect(text).toContain("'=1+1");
+  });
+
+  it("prefixes the file with a UTF-8 BOM, so non-ASCII fields don't render as mojibake in Excel", async () => {
+    stub({
+      ...BASE_ROUTES,
+      "GET /api/links": (url: URL) => {
+        const offset = Number(url.searchParams.get("offset") ?? "0");
+        if (offset === 0) return Response.json({ links: [LINK], total: 1 });
+        return Response.json({ links: [], total: 1 });
+      },
+    });
+    renderSettings();
+    await screen.findByText("Chrome on macOS");
+
+    await userEvent.click(screen.getByRole("button", { name: /export/i }));
+
+    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalled());
+    const blob = (URL.createObjectURL as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as Blob;
+    const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3);
+    expect(Array.from(bytes)).toEqual([0xef, 0xbb, 0xbf]);
   });
 
   it("says the export failed rather than downloading a partial file when a later page fails", async () => {
