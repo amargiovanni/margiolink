@@ -2996,7 +2996,35 @@ git commit -m "feat(web): add the link detail page with every dimension"
 - Consumes: `PERIODS`, `rangeFor`, `granularityFor` (Task 7); `StatTile`, `TimeSeries`, `RankedBars`, `WorldMap`, `Heatmap`.
 - Produces: the `/` route; `<PeriodPicker value onChange>`.
 
-Layout, top to bottom: the period picker; a row of four stat tiles (clicks, unique visitors, countries reached, bot share) each with its own sparkline and a delta against the preceding window; the time series; then a two-column grid holding top links, the world map, devices and channels; then the heatmap full width.
+Layout, top to bottom: the period picker; a row of four stat tiles (clicks, unique visitors, countries reached, bot share) each with a delta against the preceding window; the time series; then a two-column grid holding top links, the world map, devices and channels; then the heatmap full width.
+
+**Only two of the four tiles get a sparkline, and that is deliberate.**
+`useSummary` returns `{ current, previous }`, so all four have their delta. But
+the only per-bucket source is `useTimeseries`, which returns `bucket, clicks,
+uniques` and nothing else — and its query carries `AND is_bot = 0`, so a bot
+series is impossible from it by construction, not merely absent. There is no
+per-bucket country count anywhere.
+
+So: clicks and uniques take their `spark` from the timeseries buckets; countries
+and bots pass no `spark` at all (`StatTile`'s prop is optional). Do not
+fabricate a two-point series from `current` and `previous` to fill the space — a
+sparkline that is really a single delta drawn as a line is a chart that lies
+about how much it knows.
+
+Extending `/api/stats/timeseries` to carry per-bucket countries and bots would
+change the semantics of a chart already shipped and reviewed in Tasks 7 and 11,
+including tests that pin its `linkId` scoping. That is a deliberate change with
+its own review, not a drive-by inside a page task.
+
+**Bot share is `bots / (clicks + bots)`.** `summary.clicks` already excludes
+bots — `SUM(CASE WHEN is_bot = 0 ...)` — so dividing by `clicks` alone would be
+a share of the wrong denominator and could exceed 100%. The denominator is every
+recorded hit. The `--color-warning` threshold of 50% therefore means "more than
+half of all recorded traffic was automated", which is the sentence a reader will
+form on seeing it.
+
+The summary and the time series agree on what a click is: both exclude bots.
+Nothing on this page should imply otherwise.
 
 - [ ] **Step 1: Write the failing test `web/src/components/PeriodPicker.test.tsx`**
 
