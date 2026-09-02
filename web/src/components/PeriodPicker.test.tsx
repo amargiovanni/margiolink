@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { PERIODS } from "../lib/ranges";
 import { PeriodPicker } from "./PeriodPicker";
 
 describe("PeriodPicker", () => {
@@ -36,5 +37,22 @@ describe("PeriodPicker", () => {
     const label = screen.getByRole("radio", { name: /7 days/i }).closest("label");
     expect(label?.className).toMatch(/has-\[:focus-visible\]:outline/);
     expect(label?.className).not.toMatch(/peer-focus-visible/);
+  });
+
+  it("renders only the periods it is given, when a caller passes a filtered list", () => {
+    render(
+      <PeriodPicker
+        value="7d"
+        onChange={() => {}}
+        periods={PERIODS.filter((p) => p.id !== "12m")}
+      />,
+    );
+    expect(screen.queryByRole("radio", { name: /12 months/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /90 days/i })).toBeInTheDocument();
+  });
+
+  it("falls back to the full list when no periods are given, unchanged from before", () => {
+    render(<PeriodPicker value="7d" onChange={() => {}} />);
+    expect(screen.getByRole("radio", { name: /12 months/i })).toBeInTheDocument();
   });
 });

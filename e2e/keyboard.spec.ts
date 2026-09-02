@@ -30,9 +30,13 @@ import { expect, test } from "./fixtures";
  * in the dashboard — reached and operated with no `page.click`.
  */
 
-// PERIODS in web/src/lib/ranges.ts — kept as a literal count here rather than
-// imported, so this file has no dependency on web/'s module graph.
-const PERIOD_COUNT = 5;
+// periodsFor(180) in web/src/lib/ranges.ts — kept as a literal count here
+// rather than imported, so this file has no dependency on web/'s module
+// graph. 4, not PERIODS' full 5: at the real deployment's 180-day
+// RAW_RETENTION_DAYS (wrangler.jsonc), 12m's own comparison window falls
+// entirely outside retention, so the picker never offers it — see I1 in the
+// final review.
+const PERIOD_COUNT = 4;
 
 // `page.keyboard.press("ControlOrMeta+K")` does NOT open the palette —
 // verified interactively: `ControlOrMeta` is a valid token for a

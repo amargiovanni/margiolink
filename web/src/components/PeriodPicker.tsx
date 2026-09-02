@@ -26,9 +26,16 @@ import { PERIODS, type PeriodId } from "../lib/ranges";
 export function PeriodPicker({
   value,
   onChange,
+  periods = PERIODS,
 }: {
   value: PeriodId;
   onChange: (id: PeriodId) => void;
+  /** Defaults to the full list so every existing caller and test keeps
+   *  working unchanged. A caller that knows the deployment's retention
+   *  window passes `periodsFor(retentionDays)` instead — see `ranges.ts` —
+   *  so a period whose comparison window falls outside retention is never
+   *  offered rather than offered and silently wrong. */
+  periods?: readonly (typeof PERIODS)[number][];
 }) {
   return (
     <div
@@ -36,7 +43,7 @@ export function PeriodPicker({
       aria-label="Period"
       className="inline-flex flex-wrap gap-1 rounded-lg border border-rule bg-surface-raised p-1"
     >
-      {PERIODS.map((period) => {
+      {periods.map((period) => {
         const checked = period.id === value;
         return (
           <label

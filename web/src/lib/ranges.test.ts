@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { granularityFor, PERIODS, rangeFor } from "./ranges";
+import { droppedPeriodsNote, granularityFor, PERIODS, periodsFor, rangeFor } from "./ranges";
 
 const HOUR = 3600;
 const DAY = 86_400;
@@ -67,5 +67,54 @@ describe("rangeFor", () => {
     const fallback = rangeFor("bogus", 1_800_000_000);
     const sevenDay = rangeFor("7d", 1_800_000_000);
     expect(fallback).toEqual(sevenDay);
+  });
+});
+
+describe("periodsFor", () => {
+  // The deployment's real, deliberately unhardcoded retention window
+  // (`RAW_RETENTION_DAYS` in `wrangler.jsonc`) — this is the exact figure
+  // I1's ruling names: at 180 days, 12m's own comparison window (the
+  // preceding 365 days) reaches back to day 730, entirely outside
+  // retention, so it must be dropped while the other four survive.
+  const DEPLOYED_RETENTION_DAYS = 180;
+
+  it("drops exactly the periods whose comparison window falls outside retention", () => {
+    expect(periodsFor(DEPLOYED_RETENTION_DAYS).map((p) => p.id)).toEqual([
+      "24h",
+      "7d",
+      "30d",
+      "90d",
+    ]);
+  });
+
+  it("keeps every period once retention comfortably covers all of their comparison windows", () => {
+    expect(periodsFor(1000).map((p) => p.id)).toEqual(PERIODS.map((p) => p.id));
+  });
+
+  // 12m's comparison window needs 2 * 365 = 730 days of retention exactly —
+  // pinning both sides of that boundary the same way `granularityFor`'s own
+  // boundary tests do above.
+  it("keeps 12m when retention is exactly its 730-day requirement", () => {
+    expect(periodsFor(730).map((p) => p.id)).toContain("12m");
+  });
+
+  it("drops 12m one day short of its 730-day requirement", () => {
+    expect(periodsFor(729).map((p) => p.id)).not.toContain("12m");
+  });
+
+  it("drops every period once retention is too short even for 24h's own comparison window", () => {
+    expect(periodsFor(1)).toEqual([]);
+  });
+});
+
+describe("droppedPeriodsNote", () => {
+  it("names the retention window when a period was dropped", () => {
+    const note = droppedPeriodsNote(180);
+    expect(note).not.toBeNull();
+    expect(note).toMatch(/180/);
+  });
+
+  it("says nothing when retention drops nothing off the list", () => {
+    expect(droppedPeriodsNote(1000)).toBeNull();
   });
 });
