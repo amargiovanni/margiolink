@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Fraunces Variable", Georgia, serif;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+
+  --color-surface: #12100e;
+  --color-surface-raised: #1a1714;
+  --color-surface-sunken: #0c0a09;
+  --color-rule: #2c2823;
+  --color-ink: #f6f2ea;
+  --color-ink-muted: #a8a094;
+  /* Was #6f675c (3.20:1 on #1a1714 surface-raised) — below WCAG AA's 4.5:1
+     for normal text. Found the same way as the light-mode ink-faint fix
+     below: e2e/a11y.spec.ts (Task 15) running real axe-core against a real
+     Chromium, which a cascade-blind jsdom test cannot do. */
+  --color-ink-faint: #8f877c; /* 5.04:1 on #1a1714, 5.36:1 on #12100e, 5.57:1 on #0c0a09 */
+
+  --color-accent: #d89b2e;
+  --color-accent-ink: #12100e;
+
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+  --color-series-4: #c98500;
+  --color-series-5: #d55181;
+  --color-series-6: #008300;
+  --color-series-7: #9085e9;
+  --color-series-8: #e66767;
+
+  /* A ramp slot indexes magnitude, not lightness: slot 1 is always the
+     lowest value in the data, slot 5 always the highest, in every theme.
+     What changes between themes is which luminance "lowest" maps to — on
+     this near-black surface a low value sits dark, close to the surface;
+     on the warm paper below a low value sits pale, close to the paper.
+     Same semantics, opposite luminance, because the surfaces are opposite.
+     A consumer should always map its smallest bucket to slot 1, in both
+     themes — never re-sort by lightness. */
+  --color-ramp-1: #1e4d7e;
+  --color-ramp-2: #3670ae;
+  --color-ramp-3: #5c95ce;
+  --color-ramp-4: #8cb9e2;
+  --color-ramp-5: #bbd7f0;
+
+  --color-good: #199e70;
+  --color-warning: #c98500;
+  --color-critical: #e66767;
+}
+
+/* Light is a separately stepped alternative, not an inversion. Both the OS
+   setting and the explicit toggle must win, which is why the values appear
+   under two scopes. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --color-surface: #faf7f2;
+    --color-surface-raised: #ffffff;
+    --color-surface-sunken: #f1ece3;
+    --color-rule: #ddd6c9;
+    --color-ink: #1b1814;
+    --color-ink-muted: #5f574c;
+    /* Was #8c8479 (3.68:1 on #ffffff, 3.45:1 on #faf7f2) — below WCAG AA's
+       4.5:1 for normal text. Discovered by e2e/a11y.spec.ts (Task 15)
+       running real axe-core against a real Chromium: the tokens.test.ts
+       validator below only pins hex values, it never measures a contrast
+       ratio, so nothing caught this until a real browser rendered the
+       actual text. Same "stepped independently, not inherited" fix as
+       good/warning/critical (4286bc1) — just a token that test happened
+       not to cover. */
+    --color-ink-faint: #756e63; /* 5.04:1 on #ffffff, 4.72:1 on #faf7f2 */
+    --color-accent: #8a5e12;
+    --color-accent-ink: #ffffff;
+    --color-series-1: #2a78d6;
+    --color-series-2: #eb6834;
+    --color-series-3: #1baf7a;
+    --color-series-4: #eda100;
+    --color-series-5: #e87ba4;
+    --color-series-6: #008300;
+    --color-series-7: #4a3aa7;
+    --color-series-8: #e34948;
+    /* Slot still means magnitude, not lightness — see the comment on the
+       dark ramp above. Slot 1 is the lowest value; it just sits pale here
+       instead of dark, because the surface it sits near is pale too. */
+    --color-ramp-1: #7fadd8;
+    --color-ramp-2: #4e8fcb;
+    --color-ramp-3: #2a6fb5;
+    --color-ramp-4: #1a4e85;
+    --color-ramp-5: #0e2f53;
+    /* The dark-mode good/warning/critical values fall below 4.5:1 on this
+       paper surface, so light mode steps them independently rather than
+       inheriting the @theme block's values — the same "stepped, not
+       inverted" treatment surface/ink/accent already get. Ratios measured
+       against #faf7f2. Warning is a burnt orange rather than an amber on
+       purpose: at the accent's hue and lightness it would be
+       indistinguishable from an action. */
+    --color-good: #0f6b4a; /* 6.10:1 on #faf7f2 */
+    --color-warning: #a04b00; /* 5.61:1 */
+    --color-critical: #b3261e; /* 6.12:1 */
+  }
+}
+
+:root[data-theme="light"] {
+  --color-surface: #faf7f2;
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: #f1ece3;
+  --color-rule: #ddd6c9;
+  --color-ink: #1b1814;
+  --color-ink-muted: #5f574c;
+  /* See the comment beside this in the @media block above. */
+  --color-ink-faint: #756e63; /* 5.04:1 on #ffffff, 4.72:1 on #faf7f2 */
+  --color-accent: #8a5e12;
+  --color-accent-ink: #ffffff;
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+  --color-series-4: #eda100;
+  --color-series-5: #e87ba4;
+  --color-series-6: #008300;
+  --color-series-7: #4a3aa7;
+  --color-series-8: #e34948;
+  /* Slot still means magnitude, not lightness — see the comment on the dark
+     ramp in the @theme block above. */
+  --color-ramp-1: #7fadd8;
+  --color-ramp-2: #4e8fcb;
+  --color-ramp-3: #2a6fb5;
+  --color-ramp-4: #1a4e85;
+  --color-ramp-5: #0e2f53;
+  /* See the comment beside these in the @media block above — light mode
+     steps good/warning/critical independently rather than inheriting the
+     dark values, which fall below 4.5:1 on this paper surface. */
+  --color-good: #0f6b4a; /* 6.10:1 on #faf7f2 */
+  --color-warning: #a04b00; /* 5.61:1 */
+  --color-critical: #b3261e; /* 6.12:1 */
+}

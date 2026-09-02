@@ -1,20 +1,25 @@
 import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createLink } from "../../src/db/links";
+import { createLink, softDeleteLink } from "../../src/db/links";
 
 const DAY = 86_400;
 const BASE = Date.parse("2026-03-10T00:00:00Z") / 1000;
 let cookie = "";
 let linkId = 0;
+let otherLinkId = 0;
 
-async function insertClick(ts: number, overrides: Record<string, unknown> = {}) {
-  const row = { visitor_hash: `v${ts}`, country: "IT", is_bot: 0, ...overrides };
+async function insertClickFor(id: number, ts: number, overrides: Record<string, unknown> = {}) {
+  const row = { visitor_hash: `v${id}-${ts}`, country: "IT", is_bot: 0, ...overrides };
   await env.DB.prepare(
     `INSERT INTO clicks (link_id, ts, visitor_hash, source, outcome, is_bot, country)
      VALUES (?, ?, ?, 'link', 'redirect', ?, ?)`,
   )
-    .bind(linkId, ts, row.visitor_hash, row.is_bot, row.country)
+    .bind(id, ts, row.visitor_hash, row.is_bot, row.country)
     .run();
+}
+
+async function insertClick(ts: number, overrides: Record<string, unknown> = {}) {
+  return insertClickFor(linkId, ts, overrides);
 }
 
 beforeEach(async () => {
@@ -23,6 +28,8 @@ beforeEach(async () => {
   await env.DB.prepare("DELETE FROM admin_sessions").run();
 
   linkId = (await createLink(env.DB, { slug: "stats", targetUrl: "https://e.com" }, BASE)).id;
+  otherLinkId = (await createLink(env.DB, { slug: "stats-2", targetUrl: "https://e2.com" }, BASE))
+    .id;
 
   const res = await SELF.fetch("https://link.test/api/auth/login", {
     method: "POST",
@@ -60,6 +67,20 @@ describe("GET /api/stats/summary", () => {
   it("rejects a missing range", async () => {
     expect((await api("/api/stats/summary")).status).toBe(400);
   });
+
+  it("scopes to one link when linkId is supplied, and covers both when it is not", async () => {
+    await insertClickFor(linkId, BASE + 100);
+    await insertClickFor(linkId, BASE + 200);
+    await insertClickFor(otherLinkId, BASE + 100);
+
+    const scoped = await api(`/api/stats/summary?from=${BASE}&to=${BASE + DAY}&linkId=${linkId}`);
+    const scopedBody = (await scoped.json()) as { current: { clicks: number } };
+    expect(scopedBody.current.clicks).toBe(2);
+
+    const all = await api(`/api/stats/summary?from=${BASE}&to=${BASE + DAY}`);
+    const allBody = (await all.json()) as { current: { clicks: number } };
+    expect(allBody.current.clicks).toBe(3);
+  });
 });
 
 describe("GET /api/stats/timeseries", () => {
@@ -80,6 +101,21 @@ describe("GET /api/stats/timeseries", () => {
   it("rejects a range where from is after to", async () => {
     const res = await api(`/api/stats/timeseries?from=${BASE + DAY}&to=${BASE}&granularity=hour`);
     expect(res.status).toBe(400);
+  });
+
+  it("scopes to one link when linkId is supplied, and covers both when it is not", async () => {
+    await insertClickFor(linkId, BASE + 100);
+    await insertClickFor(otherLinkId, BASE + 200);
+
+    const scoped = await api(
+      `/api/stats/timeseries?from=${BASE}&to=${BASE + DAY}&granularity=hour&linkId=${linkId}`,
+    );
+    const scopedBody = (await scoped.json()) as { buckets: { clicks: number }[] };
+    expect(scopedBody.buckets.reduce((sum, b) => sum + b.clicks, 0)).toBe(1);
+
+    const all = await api(`/api/stats/timeseries?from=${BASE}&to=${BASE + DAY}&granularity=hour`);
+    const allBody = (await all.json()) as { buckets: { clicks: number }[] };
+    expect(allBody.buckets.reduce((sum, b) => sum + b.clicks, 0)).toBe(2);
   });
 });
 
@@ -113,9 +149,50 @@ describe("GET /api/stats/dimension", () => {
     expect(res.status).toBe(400);
   });
 
+  // dow_hour has a bounded, known maximum of 7 * 24 = 168 distinct values —
+  // the heatmap's whole point is to show every one of them, so a cap that
+  // still truncates the grid at 100 is the defect this test guards against.
+  it("returns more than 100 distinct dow_hour cells when more than 100 exist", async () => {
+    const DISTINCT_DAYS = 5;
+    for (let day = 0; day < DISTINCT_DAYS; day++) {
+      for (let hour = 0; hour < 24; hour++) {
+        await insertClick(BASE + day * DAY + hour * 3600);
+      }
+    }
+
+    const res = await api(
+      `/api/stats/dimension?name=dow_hour&from=${BASE}&to=${BASE + DISTINCT_DAYS * DAY}&limit=168`,
+    );
+    const body = (await res.json()) as { slices: { value: string }[] };
+    expect(body.slices).toHaveLength(DISTINCT_DAYS * 24);
+    expect(new Set(body.slices.map((s) => s.value)).size).toBe(DISTINCT_DAYS * 24);
+  });
+
+  it("rejects a limit above dow_hour's own 168-cell bound", async () => {
+    const res = await api(
+      `/api/stats/dimension?name=dow_hour&from=${BASE}&to=${BASE + DAY}&limit=169`,
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("rejects a range where from is after to", async () => {
     const res = await api(`/api/stats/dimension?name=country&from=${BASE + DAY}&to=${BASE}`);
     expect(res.status).toBe(400);
+  });
+
+  it("scopes to one link when linkId is supplied, and covers both when it is not", async () => {
+    await insertClickFor(linkId, BASE + 1, { country: "IT" });
+    await insertClickFor(otherLinkId, BASE + 2, { country: "FR" });
+
+    const scoped = await api(
+      `/api/stats/dimension?name=country&from=${BASE}&to=${BASE + DAY}&linkId=${linkId}`,
+    );
+    const scopedBody = (await scoped.json()) as { slices: { value: string }[] };
+    expect(scopedBody.slices.map((s) => s.value)).toStrictEqual(["IT"]);
+
+    const all = await api(`/api/stats/dimension?name=country&from=${BASE}&to=${BASE + DAY}`);
+    const allBody = (await all.json()) as { slices: { value: string }[] };
+    expect(allBody.slices.map((s) => s.value).sort()).toStrictEqual(["FR", "IT"]);
   });
 });
 
@@ -189,6 +266,137 @@ describe("GET /api/stats/live", () => {
   it("caps the limit", async () => {
     const res = await api("/api/stats/live?limit=99999");
     expect(res.status).toBe(400);
+  });
+
+  it("scopes to one link when linkId is supplied, and covers both when it is not", async () => {
+    await insertClickFor(linkId, BASE + 1);
+    await insertClickFor(otherLinkId, BASE + 2);
+
+    const scoped = await api(`/api/stats/live?limit=10&linkId=${linkId}`);
+    const scopedBody = (await scoped.json()) as { clicks: { linkId: number }[] };
+    expect(scopedBody.clicks).toHaveLength(1);
+    expect(scopedBody.clicks[0]?.linkId).toBe(linkId);
+
+    const all = await api("/api/stats/live?limit=10");
+    const allBody = (await all.json()) as { clicks: { linkId: number }[] };
+    expect(allBody.clicks).toHaveLength(2);
+  });
+});
+
+describe("GET /api/stats/top-links", () => {
+  it("ranks links by click count within the window", async () => {
+    await insertClickFor(linkId, BASE + 1);
+    await insertClickFor(linkId, BASE + 2);
+    await insertClickFor(otherLinkId, BASE + 1);
+
+    const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`);
+    const body = (await res.json()) as { links: { id: number; clicks: number }[] };
+    expect(body.links[0]).toMatchObject({ id: linkId, clicks: 2 });
+    expect(body.links[1]).toMatchObject({ id: otherLinkId, clicks: 1 });
+  });
+
+  it("excludes clicks before the window", async () => {
+    await insertClickFor(linkId, BASE + 1);
+    await insertClickFor(linkId, BASE - DAY); // before the window
+
+    const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`);
+    const body = (await res.json()) as { links: { id: number; clicks: number }[] };
+    expect(body.links).toStrictEqual([expect.objectContaining({ id: linkId, clicks: 1 })]);
+  });
+
+  it("excludes clicks at or after the window's upper bound", async () => {
+    // The window is half-open ([from, to)): a click landing exactly on `to`
+    // belongs to the *next* window, not this one. An off-by-one that made
+    // the upper bound inclusive would double-count that instant across two
+    // adjacent periods.
+    await insertClickFor(linkId, BASE + 1);
+    await insertClickFor(linkId, BASE + DAY); // exactly at `to`
+    await insertClickFor(linkId, BASE + DAY + 1); // after `to`
+
+    const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`);
+    const body = (await res.json()) as { links: { id: number; clicks: number }[] };
+    expect(body.links).toStrictEqual([expect.objectContaining({ id: linkId, clicks: 1 })]);
+  });
+
+  it("excludes bot clicks", async () => {
+    await insertClickFor(linkId, BASE + 1, { is_bot: 0 });
+    await insertClickFor(linkId, BASE + 2, { is_bot: 1 });
+
+    const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`);
+    const body = (await res.json()) as { links: { id: number; clicks: number }[] };
+    expect(body.links[0]).toMatchObject({ id: linkId, clicks: 1 });
+  });
+
+  it("excludes soft-deleted links", async () => {
+    await insertClickFor(linkId, BASE + 1);
+    await insertClickFor(otherLinkId, BASE + 1);
+    await softDeleteLink(env.DB, otherLinkId, BASE);
+
+    const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`);
+    const body = (await res.json()) as { links: { id: number }[] };
+    expect(body.links.map((l) => l.id)).toStrictEqual([linkId]);
+  });
+
+  it("breaks ties by slug so the order is deterministic", async () => {
+    // SQLite's default GROUP BY output order (no explicit ORDER BY) tracks
+    // the grouping key, `l.id` — which is assigned in creation order. Given
+    // `linkId`/`otherLinkId` alone, id order and slug order coincide
+    // ("stats" is created first *and* sorts first), so a tie-break test
+    // built on them would pass even with the `l.slug ASC` clause deleted —
+    // confirmed by actually deleting it and re-running this test before
+    // settling on this shape. These two links deliberately invert that:
+    // `zLink` is created first (lower id) but sorts *after* `aLink`
+    // (higher id) alphabetically, so only an explicit slug order — not
+    // insertion order, not id order — can produce ["a-link", "z-link"].
+    const zLink = await createLink(
+      env.DB,
+      { slug: "z-link", targetUrl: "https://z.example" },
+      BASE,
+    );
+    const aLink = await createLink(
+      env.DB,
+      { slug: "a-link", targetUrl: "https://a.example" },
+      BASE,
+    );
+    expect(zLink.id).toBeLessThan(aLink.id);
+
+    await insertClickFor(zLink.id, BASE + 1);
+    await insertClickFor(aLink.id, BASE + 2);
+
+    const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`);
+    const body = (await res.json()) as { links: { slug: string; clicks: number }[] };
+    // Tied on click count — this test only proves the tie-break clause if
+    // the two links are actually tied.
+    expect(body.links.map((l) => l.clicks)).toStrictEqual([1, 1]);
+    expect(body.links.map((l) => l.slug)).toStrictEqual(["a-link", "z-link"]);
+  });
+
+  it("rejects a range where from is after to", async () => {
+    const res = await api(`/api/stats/top-links?from=${BASE + DAY}&to=${BASE}`);
+    expect(res.status).toBe(400);
+  });
+
+  it("caps the limit", async () => {
+    const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}&limit=99999`);
+    expect(res.status).toBe(400);
+  });
+
+  it("ignores linkId — the ranking is always across every link", async () => {
+    // linkId has no meaning for a cross-link ranking; a caller who passes
+    // it must not get a per-link result that looks honoured but silently
+    // isn't. Same request with and without linkId must return the same
+    // ranking.
+    await insertClickFor(linkId, BASE + 1);
+    await insertClickFor(otherLinkId, BASE + 2);
+    await insertClickFor(otherLinkId, BASE + 3);
+
+    const withLinkId = await api(
+      `/api/stats/top-links?from=${BASE}&to=${BASE + DAY}&linkId=${linkId}`,
+    );
+    const withoutLinkId = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`);
+
+    expect(withLinkId.status).toBe(200);
+    expect(await withLinkId.json()).toStrictEqual(await withoutLinkId.json());
   });
 });
 

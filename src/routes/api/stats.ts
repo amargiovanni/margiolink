@@ -37,6 +37,7 @@ import {
   sparklines,
   summary,
   timeseries,
+  topLinks,
 } from "../../db/stats";
 import type { Env } from "../../types";
 
@@ -48,7 +49,29 @@ const rangeSchema = z
   })
   .refine((value) => value.from < value.to, { message: "from must be before to" });
 
+/** `/top-links` ranks *across* links, so `linkId` has no meaning here — this
+ *  schema simply has no field for it, rather than accepting-and-ignoring it
+ *  through the shared `rangeSchema`. A parameter this route cannot honour
+ *  should not appear to be part of its contract; a caller who sends
+ *  `linkId` gets the same whole-account ranking as one who doesn't, instead
+ *  of an unhonoured hint of a per-link one. */
+const topLinksRangeSchema = z
+  .object({
+    from: z.coerce.number().int().nonnegative(),
+    to: z.coerce.number().int().positive(),
+  })
+  .refine((value) => value.from < value.to, { message: "from must be before to" });
+
 const dimensionNames = Object.keys(DIMENSION_COLUMNS) as [DimensionName, ...DimensionName[]];
+
+/** `dow_hour` has a bounded, known maximum of 7 × 24 = 168 distinct values —
+ *  the heatmap's whole point is to show all of them, so the cap must not
+ *  truncate the grid it exists to render. Every other dimension has an
+ *  unbounded cardinality (an arbitrary country list, referrer host, UTM
+ *  campaign, …), where a cap is the right call — this raises the shared
+ *  cap to the one bounded dimension's actual maximum rather than special
+ *  -casing `name` in the schema. */
+const DIMENSION_LIMIT_MAX = 168;
 
 export const stats = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
 
@@ -93,12 +116,28 @@ stats.get("/dimension", async (c) => {
     .number()
     .int()
     .min(1)
-    .max(100)
+    .max(DIMENSION_LIMIT_MAX)
     .safeParse(c.req.query("limit") ?? 20);
   if (!limit.success) return c.json({ error: "invalid_limit" }, 400);
 
   const slices = await dimension(c.env.DB, parsed.data, name.data, limit.data);
   return c.json({ slices, dimension: name.data });
+});
+
+stats.get("/top-links", async (c) => {
+  const parsed = topLinksRangeSchema.safeParse(c.req.query());
+  if (!parsed.success) return c.json({ error: "invalid_range" }, 400);
+
+  const limit = z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .safeParse(c.req.query("limit") ?? 5);
+  if (!limit.success) return c.json({ error: "invalid_limit" }, 400);
+
+  const links = await topLinks(c.env.DB, parsed.data, limit.data);
+  return c.json({ links });
 });
 
 stats.get("/live", async (c) => {
@@ -110,7 +149,10 @@ stats.get("/live", async (c) => {
     .safeParse(c.req.query("limit") ?? 50);
   if (!limit.success) return c.json({ error: "invalid_limit" }, 400);
 
-  const clicks = await recentClicks(c.env.DB, limit.data);
+  const linkId = z.coerce.number().int().positive().optional().safeParse(c.req.query("linkId"));
+  if (!linkId.success) return c.json({ error: "invalid_link" }, 400);
+
+  const clicks = await recentClicks(c.env.DB, limit.data, linkId.data);
   return c.json({
     clicks: clicks.map((row) => ({
       id: row.id,

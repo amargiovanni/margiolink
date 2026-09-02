@@ -157,17 +157,25 @@ export async function deleteClicksBefore(
   return { deleted, capped: true };
 }
 
-export async function recentClicks(db: D1Database, limit: number): Promise<ClickFeedRow[]> {
+export async function recentClicks(
+  db: D1Database,
+  limit: number,
+  linkId?: number,
+): Promise<ClickFeedRow[]> {
+  const where = linkId !== undefined ? "WHERE c.link_id = ?" : "";
+  const values = linkId !== undefined ? [linkId, limit] : [limit];
+
   const { results } = await db
     .prepare(
       `SELECT c.id, c.link_id, l.slug, c.ts, c.country, c.city, c.device_type,
               c.browser, c.referrer_type, c.source, c.outcome, c.is_bot
        FROM clicks c
        JOIN links l ON l.id = c.link_id
+       ${where}
        ORDER BY c.ts DESC, c.id DESC
        LIMIT ?`,
     )
-    .bind(limit)
+    .bind(...values)
     .all<ClickFeedRow>();
   return results;
 }

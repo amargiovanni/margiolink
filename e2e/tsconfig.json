@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true
+  },
+  // Its own `tsc --noEmit` invocation (see `typecheck` in package.json),
+  // same reasoning as `web/tsconfig.json`: this project shares nothing with
+  // `src/` or `web/src/` beyond HTTP/JSON, so project references would add
+  // machinery without buying anything.
+  "include": ["."]
+}

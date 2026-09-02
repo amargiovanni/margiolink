@@ -10,9 +10,10 @@ It shortens links, redirects visitors in a few milliseconds, and records enough
 about each click to answer real questions — which country, which device, which
 channel, what time of day — without ever writing down who the visitor was.
 
-> **Status:** the backend is complete and covered by 317 tests. The dashboard is
-> the next piece of work; today the API is driven with `curl` or your own client.
-> See [Roadmap](#roadmap).
+> **Status:** the backend and the dashboard are both complete, covered by 640
+> tests — 350 inside `workerd` against real D1, 290 in a browser (jsdom)
+> environment — plus 22 end-to-end tests in a real Chromium, in CI on every
+> pull request. Sign in at `/app`. See [Roadmap](#roadmap).
 
 ---
 
@@ -22,7 +23,9 @@ channel, what time of day — without ever writing down who the visitor was.
 - [What it does](#what-it-does)
 - [How the privacy design works](#how-the-privacy-design-works)
 - [Architecture](#architecture)
+- [The dashboard](#the-dashboard)
 - [Running it locally](#running-it-locally)
+- [End-to-end tests](#end-to-end-tests)
 - [Deploying your own](#deploying-your-own)
 - [Configuration](#configuration)
 - [API reference](#api-reference)
@@ -138,6 +141,7 @@ One Worker, three surfaces:
 | --- | --- | --- |
 | `/:slug` | Public redirect — the hot path | none |
 | `/api/*` | JSON API, 21 routes | session cookie |
+| `/app`, `/app/*` | The dashboard shell (a single-page app; routing past that point is client-side) | session cookie, checked client-side |
 | `/privacy`, `/robots.txt`, `/.well-known/security.txt`, `/_health` | Public | none |
 
 **The redirect answers before the database is touched.** It resolves the slug,
@@ -178,6 +182,44 @@ src/
 └── cron/                 rollup.ts, retention.ts
 ```
 
+## The dashboard
+
+A responsive React single-page app, served by the same Worker at `/app` — no
+separate host, no separate deploy, and no third-party request: type,
+self-hosted fonts and the map's own topology data all ship in the build. It is
+built by `npm run build:web` (Vite) into `web/dist`, which the Worker serves
+through its `ASSETS` binding; `/app` and `/app/*` both resolve to the app
+shell, and the SPA's own router takes it from there.
+
+- **Overview** — the KPI row (clicks, unique visitors, countries reached, bot
+  share), each with a sparkline and a delta against the preceding period; the
+  time-series chart with adaptive granularity; top links; a world map; device
+  breakdown. The period picker only ever offers a period whose *comparison*
+  window (the preceding span of equal length every delta is measured
+  against) also fits inside `RAW_RETENTION_DAYS` — a period whose own span
+  fits but whose comparison window does not would show `previous` as a false
+  zero and every KPI as a false "new" increase. At the shipped 180-day
+  retention this drops the 12-month option; raising `RAW_RETENTION_DAYS`
+  brings it back with no code change (`web/src/lib/ranges.ts`'s `periodsFor`,
+  fed by `GET /api/meta`'s `retentionDays`).
+- **Links** — the working list, with instant search, status and tag filters, a
+  7-day sparkline per row, and one-tap copy. `⌘K` opens a command palette to
+  create a link from anywhere in the app. The status filter includes
+  **Deleted**: a soft-deleted link (see `DELETE /api/links/:id` below) stays
+  reachable there, with a Restore action in its row menu.
+- **Link detail** — every collected dimension as a ranked, proportional-bar
+  list (countries with flags, cities, browsers, operating systems, referrers,
+  UTM campaigns, and more), an hour-by-weekday heatmap, a live click feed, the
+  QR code (downloadable as SVG or PNG, with scans counted separately from
+  clicks), and the outcome breakdown.
+- **Tags** and **Settings** — tag management; active sessions with
+  revocation; the retention window shown read-only, straight from
+  `RAW_RETENTION_DAYS`; and a CSV export that streams straight to the browser.
+
+Built to WCAG 2.2 AA: keyboard-operable throughout, focus always visible, no
+chart conveys information by colour alone, and every chart ships a table view
+as well as a plot.
+
 ## Running it locally
 
 **Requirements:** Node 24 (see `.nvmrc`) and npm. No Cloudflare account needed
@@ -196,7 +238,20 @@ npm run db:migrate:local
 npm run dev
 ```
 
-The Worker comes up on `http://localhost:8787`. Try it:
+The Worker comes up on `http://localhost:8787`, serving the API and whatever
+`web/dist` currently holds — run `npm run build:web` once beforehand, or the
+dashboard shell has nothing to serve. Open `http://localhost:8787/app` and
+sign in with the `ADMIN_USER`/`ADMIN_PASSWORD` from `.dev.vars`; rebuild with
+`npm run build:web` after a dashboard change and reload.
+
+`npm run dev:web` runs Vite's own dev server for fast markup/style iteration
+with hot reload, on its own port — the API client fetches same-origin
+(`credentials: "same-origin"` in `web/src/lib/api.ts`), and nothing proxies
+`/api/*` from that port to the Worker, so it is for layout and component work
+against stubbed data, not for exercising the real API end to end. `npm run
+deploy` runs `build:web` automatically before deploying.
+
+Or drive the API directly:
 
 ```bash
 # Log in and keep the session cookie
@@ -223,6 +278,35 @@ To run the scheduled jobs by hand:
 curl "localhost:8787/cdn-cgi/local/scheduled?cron=0+*+*+*+*"    # hourly rollup
 curl "localhost:8787/cdn-cgi/local/scheduled?cron=30+3+*+*+*"   # daily retention
 ```
+
+## End-to-end tests
+
+`npm test` runs entirely against stubbed data (`jsdom` has no CSS cascade, no
+layout, no real focus model, no canvas and no navigation) — it cannot see a
+focus ring that never renders, a redirect that loops, a QR PNG that encodes
+the wrong URL, or a colour that fails contrast. `e2e/` covers exactly that
+gap, in a real Chromium, against the real Worker and a real (throwaway) D1.
+It is not a second pass over what `npm test` already checks.
+
+```bash
+npx playwright install chromium   # once
+npm run e2e                       # headless
+npm run e2e:ui                    # Playwright's UI mode, for writing/debugging
+```
+
+`npm run e2e` builds the dashboard and starts `wrangler dev` itself
+(`e2e/playwright.config.ts`'s `webServer`), then seeds two links, a tag and
+~50 real clicks through the actual API (`e2e/seed.ts`) before any test runs.
+It needs the same `npm run db:migrate:local` this section's "Running it
+locally" step above already asked for — a fresh clone's local D1 has no
+schema yet, and the suite has nothing to log into or click through without
+one. It never reads or writes your `.dev.vars`: `webServer` passes its own
+fixed, fake `ADMIN_USER`/`ADMIN_PASSWORD`/`HASH_SECRET` straight to
+`wrangler dev` as `--var` flags (`e2e/fixtures.ts`), which override any
+same-named `.dev.vars` entry rather than needing one absent — the same
+values run locally and in CI, on a runner that has no `.dev.vars` at all.
+Override them with `E2E_ADMIN_USER`/`E2E_ADMIN_PASSWORD`/`E2E_HASH_SECRET` if
+you ever need different ones.
 
 ## Deploying your own
 
@@ -353,16 +437,33 @@ creation limit is hit.
 | `POST` | `/api/tags` | `{name, color}` — colour must be `#rrggbb` |
 | `DELETE` | `/api/tags/:id` | Detaches from links; does not delete them |
 
+### Deployment facts
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `GET` | `/api/meta` | `{retentionDays, shortDomain}` — the Worker's own `RAW_RETENTION_DAYS` and `SHORT_DOMAIN` |
+
+`retentionDays` is a number, not the environment's string. The dashboard's
+Settings page states the retention window as a read-only fact and names this as
+its source: a figure the client invented would drift silently from the one the
+deletion job actually enforces, which for a privacy claim is worse than showing
+nothing.
+
 ### Statistics
 
-All take `from` and `to` as unix seconds, plus optional `linkId`.
+The first four take `from` and `to` as unix seconds, plus an optional `linkId`
+that scopes every figure to one link. `top-links` takes the range but no
+`linkId` — it ranks *across* links, so scoping it to one would be meaningless,
+and the parameter is deliberately absent from its schema rather than accepted
+and ignored. `sparklines` takes neither: it is a fixed trailing window.
 
 | Method | Path | Notes |
 | --- | --- | --- |
 | `GET` | `/api/stats/summary` | Returns `current` and `previous` — the preceding window of equal length |
 | `GET` | `/api/stats/timeseries` | `&granularity=hour\|day\|week` |
-| `GET` | `/api/stats/dimension` | `&name=<dimension>&limit=` (max 100) |
+| `GET` | `/api/stats/dimension` | `&name=<dimension>&limit=` (max 168 — `dow_hour`'s own bounded maximum, 7 days × 24 hours; every other dimension has unbounded cardinality, where the cap is the point) |
 | `GET` | `/api/stats/live` | `?limit=` (max 200) — recent clicks |
+| `GET` | `/api/stats/top-links` | `&limit=` — links ranked by clicks in the window. Excludes soft-deleted links; ties break on slug so the order is stable between refreshes |
 | `GET` | `/api/stats/sparklines` | `?days=` (max 90) — per-link daily counts |
 
 Dimensions: `country`, `city`, `device`, `os`, `browser`, `referrer_type`,
@@ -372,8 +473,16 @@ Dimensions: `country`, `city`, `device`, `os`, `browser`, `referrer_type`,
 Bots are excluded from every figure except the `bots` count in `summary`.
 
 **One caveat the API cannot hide:** these endpoints read raw click rows, so a
-range extending past `RAW_RETENTION_DAYS` under-reports rather than failing.
-Serving older ranges from the aggregate tables is part of the dashboard work.
+range extending past `RAW_RETENTION_DAYS` under-reports rather than failing —
+no response carries a "truncated at" marker. The dashboard closes this by
+never *offering* such a range in the first place (see the Overview bullet
+above): every period its picker shows is one whose full comparison window
+still fits inside retention, so the under-report this paragraph describes
+cannot be reached through the shipped UI. A caller that queries these
+endpoints directly, or a future range picker that skips `periodsFor`, still
+hits it. Serving older ranges from the aggregate tables (`click_daily`,
+`click_daily_dim`) so a range past retention degrades to less-precise data
+instead of being unofferable at all remains separate, undone work.
 
 ### Public
 
@@ -423,22 +532,30 @@ than silently eating history.
 ## Development
 
 ```bash
-npm test                    # 317 tests, inside workerd against real D1
+npm test                    # 640 tests: 350 inside workerd against real D1, 290 in jsdom
 npm run test:watch
+npm run e2e                 # 22 tests in a real Chromium — see "End-to-end tests" above
 npm run check               # Biome: lint and format
 npm run check:fix
-npm run typecheck           # tsc --noEmit
+npm run typecheck           # tsc --noEmit (backend, dashboard and e2e/, each their own project)
+npm run build:web           # builds the dashboard into web/dist
+npm run dev:web             # Vite dev server for the dashboard — see "The dashboard" above
 npm run db:verify-rollback  # proves the newest migration is reversible
 ```
 
-Tests never mock the database. They run inside `workerd` with a real local D1,
-so every SQL statement is executed by SQLite — a query that would fail in
-production fails here.
+Backend tests never mock the database. They run inside `workerd` with a real
+local D1, so every SQL statement is executed by SQLite — a query that would
+fail in production fails here. Dashboard tests render each page against a
+stubbed API and include a cross-cutting accessibility sweep
+(`web/src/a11y.test.tsx`) over every page: one `<h1>`, no skipped heading
+level, every image, form control and button named, no positive `tabIndex`,
+and every chart inside a named region.
 
-CI runs lint, types and the full suite on every pull request, plus a separate
-job that applies the migrations, rolls the newest one back, and checks the
-schema both changed and came back identical. A migration added without a
-working down file fails there.
+CI runs lint, types and the full suite on every pull request, a separate job
+that applies the migrations, rolls the newest one back, and checks the schema
+both changed and came back identical (a migration added without a working
+down file fails there), and a third that runs the end-to-end suite in a real
+Chromium and uploads the HTML report if it fails.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions and the review bar.
 
@@ -465,10 +582,16 @@ substitute for it.
 
 ## Roadmap
 
-The backend is done. Next is the dashboard: a responsive interface for creating
-links and reading the analytics, built against the API above. Two known pieces
-of work belong to it — serving ranges older than the retention window from the
-aggregate tables, and labelling summed unique counts honestly.
+The backend and the dashboard are both done. Two known pieces of work remain,
+both already documented where a consumer of the affected figure will see them
+rather than only here:
+
+- **Ranges older than `RAW_RETENTION_DAYS` under-report.** The statistics
+  endpoints read raw click rows; serving older ranges from the aggregate
+  tables (`click_daily`, `click_daily_dim`) instead is not yet built.
+- **Summed unique counts across days are deliberately imprecise**, for the
+  reason in [How the privacy design works](#how-the-privacy-design-works) — a
+  returning visitor is counted once per day, by design, not by omission.
 
 ## Contributing, security, licence
 

@@ -39,6 +39,17 @@ running deployment appears under its own heading.
   `clicks` column, enforced against the live schema by a test.
 - **CI** running lint, types and the full suite on every pull request, plus a
   separate job that proves the newest migration is reversible.
+- **A dashboard**, served by the same Worker at `/app` — no separate host or
+  deploy. An overview with KPI tiles, a time-series chart and a world map;
+  the working links list with instant search, filters and a `⌘K` command
+  palette to create a link from anywhere; a link detail page ranking every
+  collected dimension, an hour-by-weekday heatmap, a live click feed and a
+  downloadable QR code; tag management; and a settings page for active
+  sessions, session revocation, and a CSV export of every link. Built to WCAG
+  2.2 AA — keyboard-operable throughout, no chart conveys information by
+  colour alone, and every chart offers a table view alongside its plot. Fonts
+  are self-hosted and the map's topology data ships in the build, so opening
+  it makes no third-party request either.
 
 ### Security
 

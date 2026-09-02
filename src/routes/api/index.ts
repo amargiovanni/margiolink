@@ -3,6 +3,7 @@ import type { AuthedVariables } from "../../auth/middleware";
 import type { Env } from "../../types";
 import { privateAuth, publicAuth } from "./auth";
 import { links } from "./links";
+import { meta } from "./meta";
 import { stats } from "./stats";
 import { tags } from "./tags";
 
@@ -16,6 +17,7 @@ export function createApiRouter(): Hono<{ Bindings: Env; Variables: AuthedVariab
   api.route("/links", links);
   api.route("/tags", tags);
   api.route("/stats", stats);
+  api.route("/meta", meta);
 
   api.notFound((c) => c.json({ error: "not_found" }, 404));
 

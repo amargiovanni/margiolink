@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    // `vite.config.ts` imports `../package.json` for its `version` field
+    // (Step 0's build-time version injection) — off by default under every
+    // `moduleResolution` mode, not implied by "Bundler".
+    "resolveJsonModule": true
+  },
+  // This project is checked with its own `tsc --noEmit` invocation (see
+  // `typecheck` in package.json) rather than being wired into the root
+  // tsconfig via TS project references. `web/` and `src/` share no types —
+  // they only ever talk over HTTP/JSON — so references would buy nothing
+  // here and would cost real machinery (`composite: true` forcing `.d.ts`/
+  // `.tsbuildinfo` output in a repo that is otherwise `noEmit` everywhere).
+  // If that changes — e.g. a shared response-shape module appears — project
+  // references become the right answer and this decision should be
+  // revisited.
+  "include": ["src", "vite.config.ts"]
+}

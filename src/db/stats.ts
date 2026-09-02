@@ -23,6 +23,14 @@ export interface DimensionSlice {
   uniques: number;
 }
 
+export interface TopLink {
+  id: number;
+  slug: string;
+  title: string | null;
+  clicks: number;
+  uniques: number;
+}
+
 export type Granularity = "hour" | "day" | "week";
 
 export type DimensionName =
@@ -150,6 +158,48 @@ export async function dimension(
     )
     .bind(...values, limit)
     .all<DimensionSlice>();
+
+  return results;
+}
+
+/** Ranks links by click count within `[from, to)` — the overview page's "top
+ *  links" panel, and the only ranking that crosses links rather than staying
+ *  within one.
+ *
+ *  Deliberately does not call `scope()`: that helper emits bare `ts` and
+ *  `link_id`, unambiguous here only because `links` happens to have neither
+ *  column — a coincidence this query should not depend on now that it joins
+ *  `links` in. It also carries a `linkId` branch that means nothing for a
+ *  ranking *across* links, so it is not reused even partially.
+ *
+ *  Soft-deleted links are excluded: a top-N list never sums to the period
+ *  total anyway, so their absence introduces no discrepancy a reader could
+ *  misread, and every row here links to a detail page a deleted link no
+ *  longer has.
+ *
+ *  The `l.slug ASC` tie-break makes the order deterministic — without it,
+ *  links tied on click count come back in whatever order SQLite chooses,
+ *  and the panel would reshuffle between refreshes for no reason a reader
+ *  could see. */
+export async function topLinks(
+  db: D1Database,
+  range: { from: number; to: number },
+  limit: number,
+): Promise<TopLink[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT l.id AS id, l.slug AS slug, l.title AS title,
+              COUNT(*) AS clicks,
+              COUNT(DISTINCT c.visitor_hash) AS uniques
+       FROM clicks c
+       JOIN links l ON l.id = c.link_id
+       WHERE c.ts >= ? AND c.ts < ? AND c.is_bot = 0 AND l.deleted_at IS NULL
+       GROUP BY l.id
+       ORDER BY clicks DESC, l.slug ASC
+       LIMIT ?`,
+    )
+    .bind(range.from, range.to, limit)
+    .all<TopLink>();
 
   return results;
 }

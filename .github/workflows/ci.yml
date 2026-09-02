@@ -35,11 +35,57 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      # `test/routes/spa.test.ts` asserts the Worker actually serves the
+      # built dashboard and that the asset URLs in its HTML resolve, so the
+      # assets have to exist. On a developer's machine they always do, which
+      # is why this passed locally and 404'd here for three runs before
+      # anyone looked at the CI log.
+      - name: Build the dashboard
+        run: npm run build:web
+
       # Runs inside workerd against a real local D1 database. No Cloudflare
       # credentials and no .dev.vars are needed: the test bindings live in
       # vitest.config.ts.
       - name: Tests
         run: npm test
+
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      # No credentials step here: e2e/playwright.config.ts's webServer passes
+      # its own fixed, fake ADMIN_USER/ADMIN_PASSWORD/HASH_SECRET to
+      # `wrangler dev` as --var flags (e2e/fixtures.ts), which override a
+      # .dev.vars entry of the same name and need no .dev.vars file to exist
+      # at all — this runner has none, and never will.
+      #
+      # playwright.config.ts's webServer starts `wrangler dev` against
+      # whatever this runner's D1 already has — nothing, on a fresh checkout.
+      # `npm run dev` documents the same step for local use (README.md);
+      # deliberately not folded into webServer's own command, so the two
+      # stay the same one step apart rather than one hiding inside the other.
+      - name: Apply D1 migrations (local)
+        run: npm run db:migrate:local
+
+      - run: npm run e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
 
   migrations:
     name: Migration rollback
