@@ -102,6 +102,25 @@ export function useDimension(range: Range, name: string, limit = 20) {
   });
 }
 
+export interface TopLink {
+  id: number;
+  slug: string;
+  title: string | null;
+  clicks: number;
+  uniques: number;
+}
+
+/** The overview page's "top links" panel — ranked by click count within
+ *  `range`, unlike `useSparklines` below, which is a fixed trailing window
+ *  independent of any selected period. `limit` is part of the query key
+ *  along with `range`, matching `useDimension`'s pattern. */
+export function useTopLinks(range: Range, limit = 5) {
+  return useQuery({
+    queryKey: keys.stats("top-links", { ...range, limit }),
+    queryFn: () => api.get<{ links: TopLink[] }>("/api/stats/top-links", { ...range, limit }),
+  });
+}
+
 /** Polls, because the feed is the one place a stale number is visibly wrong.
  *  `linkId` is part of the query key — without it, switching between two
  *  links' detail pages would serve one link's cached feed under the other's

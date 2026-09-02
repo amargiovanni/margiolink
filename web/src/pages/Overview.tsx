@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link as RouterLink } from "react-router";
 import { ChartFrame } from "../components/charts/ChartFrame";
 import { Heatmap } from "../components/charts/Heatmap";
 import { RankedBars } from "../components/charts/RankedBars";
@@ -6,7 +7,8 @@ import { StatTile } from "../components/charts/StatTile";
 import { TimeSeries } from "../components/charts/TimeSeries";
 import { WorldMap } from "../components/charts/WorldMap";
 import { PeriodPicker } from "../components/PeriodPicker";
-import { useDimension, useSummary, useTimeseries } from "../lib/queries";
+import { formatCount } from "../lib/format";
+import { type Range, useDimension, useSummary, useTimeseries, useTopLinks } from "../lib/queries";
 import { granularityFor, type PeriodId, rangeFor } from "../lib/ranges";
 
 const UNIQUES_HINT =
@@ -43,6 +45,72 @@ function DimensionPanel({
         <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
       ) : (
         <RankedBars slices={query.data.slices} label={title} />
+      )}
+    </ChartFrame>
+  );
+}
+
+/** The overview page's headline panel: links ranked by click count within
+ *  the selected period, each row a real link to its detail page (the
+ *  ranking excludes soft-deleted links server-side, so every row here
+ *  always has one). Built by hand rather than through `RankedBars`: that
+ *  component's rows are plain text, with no way to make the label a link,
+ *  and this panel's whole point is to route a reader straight to the link
+ *  the bar is about. */
+function TopLinksPanel({ range }: { range: Range }) {
+  const query = useTopLinks(range);
+  const links = query.data?.links ?? [];
+  const max = Math.max(...links.map((l) => l.clicks), 1);
+
+  return (
+    <ChartFrame
+      title="Top links"
+      table={{
+        columns: ["Link", "Clicks", "Uniques"],
+        rows: links.map((l) => [l.title || l.slug, l.clicks, l.uniques]),
+      }}
+    >
+      {query.isError ? (
+        <p role="alert" className="py-6 text-center text-sm text-critical">
+          Could not load top links.
+        </p>
+      ) : query.isPending ? (
+        <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
+      ) : links.length === 0 ? (
+        <p className="py-6 text-center text-sm text-ink-faint">No clicks in this period.</p>
+      ) : (
+        <ul aria-label="Top links" className="flex flex-col gap-2">
+          {links.map((link) => (
+            <li key={link.id} className="grid grid-cols-[1fr_auto] items-center gap-3">
+              <div className="min-w-0">
+                <div className="flex items-baseline justify-between gap-2">
+                  <RouterLink
+                    to={`/links/${link.id}`}
+                    className="truncate text-sm text-ink hover:text-accent hover:underline"
+                  >
+                    {link.title || link.slug}
+                  </RouterLink>
+                  {/* Direct label: never make a reader estimate a bar's length. */}
+                  <span className="shrink-0 text-sm tabular text-ink-muted">
+                    {formatCount(link.clicks)}
+                  </span>
+                </div>
+                {/* 4px rounded ends per spec §6.4 — "rounded", not "rounded-full". */}
+                <div className="mt-1 h-1.5 rounded bg-surface-sunken">
+                  <div
+                    data-bar
+                    className="h-full rounded"
+                    style={{
+                      width: `${(link.clicks / max) * 100}%`,
+                      background: "var(--color-series-1)",
+                    }}
+                    title={`${link.title || link.slug}: ${link.clicks} clicks, ${link.uniques} unique`}
+                  />
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </ChartFrame>
   );
@@ -184,6 +252,8 @@ export default function Overview() {
       </ChartFrame>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <TopLinksPanel range={range} />
+
         <ChartFrame
           title="Clicks by country"
           table={toTable("Country", countryQuery.data?.slices ?? [])}

@@ -41,6 +41,12 @@ const DEFAULT_ROUTES: Record<string, Handler> = {
     granularity: "day",
   },
   "/api/stats/dimension": dimensionByName({}),
+  "/api/stats/top-links": {
+    links: [
+      { id: 1, slug: "launch", title: "Launch", clicks: 42, uniques: 30 },
+      { id: 2, slug: "sale", title: null, clicks: 10, uniques: 8 },
+    ],
+  },
 };
 
 afterEach(() => vi.unstubAllGlobals());
@@ -99,6 +105,17 @@ describe("Overview", () => {
 
     const botTile = screen.getByText("Bot share").closest(".rounded-lg") as HTMLElement;
     expect(within(botTile).queryByRole("img", { name: /trend/i })).not.toBeInTheDocument();
+  });
+
+  it("lists top links ranked by clicks, each linking to its detail page", async () => {
+    stub(DEFAULT_ROUTES);
+    renderOverview();
+
+    const launchLink = await screen.findByRole("link", { name: "Launch" });
+    expect(launchLink).toHaveAttribute("href", "/links/1");
+
+    const saleLink = screen.getByRole("link", { name: "sale" });
+    expect(saleLink).toHaveAttribute("href", "/links/2");
   });
 
   it("re-queries with a different `from` when the period changes", async () => {

@@ -1,6 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createLink } from "../../src/db/links";
+import { createLink, softDeleteLink } from "../../src/db/links";
 
 const DAY = 86_400;
 const BASE = Date.parse("2026-03-10T00:00:00Z") / 1000;
@@ -254,6 +254,91 @@ describe("GET /api/stats/live", () => {
     const all = await api("/api/stats/live?limit=10");
     const allBody = (await all.json()) as { clicks: { linkId: number }[] };
     expect(allBody.clicks).toHaveLength(2);
+  });
+});
+
+describe("GET /api/stats/top-links", () => {
+  it("ranks links by click count within the window", async () => {
+    await insertClickFor(linkId, BASE + 1);
+    await insertClickFor(linkId, BASE + 2);
+    await insertClickFor(otherLinkId, BASE + 1);
+
+    const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`);
+    const body = (await res.json()) as { links: { id: number; clicks: number }[] };
+    expect(body.links[0]).toMatchObject({ id: linkId, clicks: 2 });
+    expect(body.links[1]).toMatchObject({ id: otherLinkId, clicks: 1 });
+  });
+
+  it("excludes clicks outside the window", async () => {
+    await insertClickFor(linkId, BASE + 1);
+    await insertClickFor(linkId, BASE - DAY); // before the window
+
+    const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`);
+    const body = (await res.json()) as { links: { id: number; clicks: number }[] };
+    expect(body.links).toStrictEqual([expect.objectContaining({ id: linkId, clicks: 1 })]);
+  });
+
+  it("excludes bot clicks", async () => {
+    await insertClickFor(linkId, BASE + 1, { is_bot: 0 });
+    await insertClickFor(linkId, BASE + 2, { is_bot: 1 });
+
+    const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`);
+    const body = (await res.json()) as { links: { id: number; clicks: number }[] };
+    expect(body.links[0]).toMatchObject({ id: linkId, clicks: 1 });
+  });
+
+  it("excludes soft-deleted links", async () => {
+    await insertClickFor(linkId, BASE + 1);
+    await insertClickFor(otherLinkId, BASE + 1);
+    await softDeleteLink(env.DB, otherLinkId, BASE);
+
+    const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`);
+    const body = (await res.json()) as { links: { id: number }[] };
+    expect(body.links.map((l) => l.id)).toStrictEqual([linkId]);
+  });
+
+  it("breaks ties by slug so the order is deterministic", async () => {
+    // SQLite's default GROUP BY output order (no explicit ORDER BY) tracks
+    // the grouping key, `l.id` — which is assigned in creation order. Given
+    // `linkId`/`otherLinkId` alone, id order and slug order coincide
+    // ("stats" is created first *and* sorts first), so a tie-break test
+    // built on them would pass even with the `l.slug ASC` clause deleted —
+    // confirmed by actually deleting it and re-running this test before
+    // settling on this shape. These two links deliberately invert that:
+    // `zLink` is created first (lower id) but sorts *after* `aLink`
+    // (higher id) alphabetically, so only an explicit slug order — not
+    // insertion order, not id order — can produce ["a-link", "z-link"].
+    const zLink = await createLink(
+      env.DB,
+      { slug: "z-link", targetUrl: "https://z.example" },
+      BASE,
+    );
+    const aLink = await createLink(
+      env.DB,
+      { slug: "a-link", targetUrl: "https://a.example" },
+      BASE,
+    );
+    expect(zLink.id).toBeLessThan(aLink.id);
+
+    await insertClickFor(zLink.id, BASE + 1);
+    await insertClickFor(aLink.id, BASE + 2);
+
+    const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`);
+    const body = (await res.json()) as { links: { slug: string; clicks: number }[] };
+    // Tied on click count — this test only proves the tie-break clause if
+    // the two links are actually tied.
+    expect(body.links.map((l) => l.clicks)).toStrictEqual([1, 1]);
+    expect(body.links.map((l) => l.slug)).toStrictEqual(["a-link", "z-link"]);
+  });
+
+  it("rejects a range where from is after to", async () => {
+    const res = await api(`/api/stats/top-links?from=${BASE + DAY}&to=${BASE}`);
+    expect(res.status).toBe(400);
+  });
+
+  it("caps the limit", async () => {
+    const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}&limit=99999`);
+    expect(res.status).toBe(400);
   });
 });
 

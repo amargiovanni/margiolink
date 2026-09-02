@@ -37,6 +37,7 @@ import {
   sparklines,
   summary,
   timeseries,
+  topLinks,
 } from "../../db/stats";
 import type { Env } from "../../types";
 
@@ -99,6 +100,22 @@ stats.get("/dimension", async (c) => {
 
   const slices = await dimension(c.env.DB, parsed.data, name.data, limit.data);
   return c.json({ slices, dimension: name.data });
+});
+
+stats.get("/top-links", async (c) => {
+  const parsed = rangeSchema.safeParse(c.req.query());
+  if (!parsed.success) return c.json({ error: "invalid_range" }, 400);
+
+  const limit = z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .safeParse(c.req.query("limit") ?? 5);
+  if (!limit.success) return c.json({ error: "invalid_limit" }, 400);
+
+  const links = await topLinks(c.env.DB, parsed.data, limit.data);
+  return c.json({ links });
 });
 
 stats.get("/live", async (c) => {
