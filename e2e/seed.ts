@@ -8,6 +8,13 @@ import { BASE_URL, CREDENTIALS } from "./fixtures";
  * directly. That makes the seed itself a test of `/api/auth/login`,
  * `/api/links`, `/api/tags` and the redirect endpoint.
  *
+ * **Idempotent across repeated runs against the same persistent local D1** —
+ * `npm run e2e` run twice in a row, with nothing resetting the database
+ * between them, must succeed both times, the same way CI's always-empty
+ * runner does. `ensureTag`/`ensureLink` below find-and-reset rather than
+ * blindly creating; see their own comments for why they take different
+ * approaches (tags have a real hard delete, links do not).
+ *
  * Two things this environment genuinely cannot fake, and does not pretend to:
  *
  * 1. **Country.** `request.cf` under `wrangler dev --local` is fetched once
@@ -104,14 +111,88 @@ async function api<T>(cookie: string, method: string, path: string, body?: unkno
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+interface LinkSummary {
+  id: number;
+  slug: string;
+  deletedAt: number | null;
+}
+interface LinksListResponse {
+  links: LinkSummary[];
+}
 interface LinkResponse {
-  link: { id: number; slug: string };
+  link: LinkSummary;
+}
+interface TagSummary {
+  id: number;
+  name: string;
+}
+interface TagsListResponse {
+  tags: TagSummary[];
 }
 interface TagResponse {
-  tag: { id: number };
+  tag: TagSummary;
 }
 interface LiveResponse {
   clicks: unknown[];
+}
+
+/**
+ * Idempotent tag creation. `/api/tags` has a real hard `DELETE`
+ * (`src/db/tags.ts`), so — unlike links, below — reset here really does mean
+ * delete-then-create: find any tag with this name from a previous run
+ * against this same persistent local D1, delete it, then create fresh. A
+ * 409 after that delete is a genuine, unexplained duplicate and is left to
+ * throw rather than swallowed — this seed running through the real API is
+ * exactly what would catch a real duplicate-name bug in it.
+ */
+async function ensureTag(cookie: string, name: string, color: string): Promise<TagSummary> {
+  const { tags } = await api<TagsListResponse>(cookie, "GET", "/api/tags");
+  const existing = tags.find((tag) => tag.name === name);
+  if (existing) await api(cookie, "DELETE", `/api/tags/${existing.id}`);
+  const created = await api<TagResponse>(cookie, "POST", "/api/tags", { name, color });
+  return created.tag;
+}
+
+async function findLinkBySlug(cookie: string, slug: string): Promise<LinkSummary | null> {
+  const query = `search=${encodeURIComponent(slug)}&limit=10`;
+  const active = await api<LinksListResponse>(cookie, "GET", `/api/links?${query}&status=all`);
+  const foundActive = active.links.find((link) => link.slug === slug);
+  if (foundActive) return foundActive;
+  const deleted = await api<LinksListResponse>(cookie, "GET", `/api/links?${query}&status=deleted`);
+  return deleted.links.find((link) => link.slug === slug) ?? null;
+}
+
+/**
+ * Idempotent link creation — deliberately NOT delete-then-create, unlike
+ * `ensureTag` above. `/api/links` has no hard-delete endpoint: `DELETE`
+ * only soft-deletes (`softDeleteLink`, `src/db/links.ts`), and the `slug`
+ * column's `UNIQUE` constraint has no `deleted_at` exception (confirmed by
+ * reading `migrations/0001_init.sql` and interactively: creating a link,
+ * soft-deleting it, then creating another with the same slug answers 409
+ * `slug_taken` every time). A slug this suite creates once stays taken by
+ * that row forever, so on a second run against the same persistent local D1
+ * the only idempotent option is to find that row and restore-and-normalise
+ * it in place rather than trying to recreate a duplicate.
+ */
+async function ensureLink(
+  cookie: string,
+  input: { slug: string; title: string; description?: string; targetUrl: string },
+): Promise<LinkSummary> {
+  const existing = await findLinkBySlug(cookie, input.slug);
+  if (!existing) {
+    const created = await api<LinkResponse>(cookie, "POST", "/api/links", input);
+    return created.link;
+  }
+  if (existing.deletedAt) {
+    await api(cookie, "POST", `/api/links/${existing.id}/restore`);
+  }
+  const updated = await api<LinkResponse>(cookie, "PATCH", `/api/links/${existing.id}`, {
+    targetUrl: input.targetUrl,
+    title: input.title,
+    description: input.description ?? null,
+    isActive: true,
+  });
+  return updated.link;
 }
 
 async function fireClick(slug: string, index: number): Promise<void> {
@@ -151,37 +232,42 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
   await waitForHealth();
   const cookie = await loginForCookie();
 
-  const tag = await api<TagResponse>(cookie, "POST", "/api/tags", {
-    name: "Launch",
-    color: "#199e70",
-  });
+  const tag = await ensureTag(cookie, "Launch", "#199e70");
 
   // Link 1: the CSV formula-injection fixture (artefacts.spec.ts, Step 5) —
   // its title starts with "=1+1", which a spreadsheet reads as a formula
   // unless the export neutralises it (fixed in b34c31d). Also the QR/live
   // dashboard fixture: every seeded click below lands on this link.
-  const primary = await api<LinkResponse>(cookie, "POST", "/api/links", {
+  const primary = await ensureLink(cookie, {
     targetUrl: "https://example.com/",
     slug: PRIMARY_SLUG,
     title: "=1+1 seasonal launch",
     description: "Seed fixture for the end-to-end suite.",
   });
-  await api(cookie, "PUT", `/api/links/${primary.link.id}/tags`, { tagIds: [tag.tag.id] });
+  await api(cookie, "PUT", `/api/links/${primary.id}/tags`, { tagIds: [tag.id] });
 
   // Link 2: soft-deleted immediately — proves the working list and the CSV
   // export (both backed by /api/links' default "all" status, which excludes
   // deleted rows — src/db/links.ts) never show a deleted link back.
-  const archived = await api<LinkResponse>(cookie, "POST", "/api/links", {
+  // `ensureLink` guarantees this is active before the DELETE below runs
+  // (restoring it first if a previous run left it soft-deleted), so this
+  // DELETE always finds a live row to remove.
+  const archived = await ensureLink(cookie, {
     targetUrl: "https://example.com/",
     slug: ARCHIVED_SLUG,
     title: "Archived before the suite ran",
   });
-  await api(cookie, "DELETE", `/api/links/${archived.link.id}`);
+  await api(cookie, "DELETE", `/api/links/${archived.id}`);
 
   // Real clicks through the real redirect route — see the module comment for
-  // what this can and cannot vary in this environment.
+  // what this can and cannot vary in this environment. These accumulate
+  // across repeated runs against the same persistent local D1 rather than
+  // being reset — real click history growing over time is the actual
+  // product behaviour, not junk, and every assertion here only checks a
+  // lower bound (waitForClicksToLand) or a specific row's own fields, never
+  // an exact total.
   for (let i = 0; i < CLICK_COUNT; i++) {
-    await fireClick(primary.link.slug, i);
+    await fireClick(primary.slug, i);
   }
 
   await waitForClicksToLand(cookie, CLICK_COUNT);

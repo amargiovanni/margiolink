@@ -24,6 +24,7 @@ import { expect, test } from "./fixtures";
 
 const SHORT_DOMAIN = "link.margio.uk";
 const PRIMARY_SLUG = "e2e-primary";
+const NON_ASCII_SLUG = "e2e-non-ascii";
 const NON_ASCII_TITLE = "Café Ünïcödé 日本語";
 
 interface QrRaster {
@@ -111,6 +112,29 @@ async function openPrimaryLink(page: import("@playwright/test").Page): Promise<v
   await page.waitForURL(/\/app\/links\/\d+$/);
 }
 
+interface LinkSummary {
+  id: number;
+  slug: string;
+  deletedAt: number | null;
+}
+
+/** `page.request` shares this page's own authenticated session (its cookies
+ *  come from the same browser context `authenticatedPage` already signed
+ *  in), so this needs no separate login of its own. */
+async function findExistingLink(
+  page: import("@playwright/test").Page,
+  slug: string,
+): Promise<LinkSummary | null> {
+  const query = `search=${encodeURIComponent(slug)}&limit=10`;
+  const active = await page.request.get(`/api/links?${query}&status=all`);
+  const activeBody = (await active.json()) as { links: LinkSummary[] };
+  const foundActive = activeBody.links.find((link) => link.slug === slug);
+  if (foundActive) return foundActive;
+  const deleted = await page.request.get(`/api/links?${query}&status=deleted`);
+  const deletedBody = (await deleted.json()) as { links: LinkSummary[] };
+  return deletedBody.links.find((link) => link.slug === slug) ?? null;
+}
+
 test.describe("artefacts — the QR and CSV defects (ebe93a8, b34c31d)", () => {
   test("the QR PNG decodes to the tracked short URL, including ?s=qr", async ({
     authenticatedPage: page,
@@ -167,13 +191,36 @@ test.describe("artefacts — the QR and CSV defects (ebe93a8, b34c31d)", () => {
     // seed (seed.ts's two links are the brief's own fixture shape) — the
     // export's UTF-8 BOM only matters if there is a non-ASCII field for
     // Excel to have gotten wrong without it.
-    await page.goto("/app/links");
-    await page.getByRole("button", { name: "New link" }).click();
-    await page.getByLabel("Destination").fill("https://example.com/non-ascii");
-    await page.getByLabel("Custom slug").fill("e2e-non-ascii");
-    await page.getByLabel("Title (optional)").fill(NON_ASCII_TITLE);
-    await page.getByRole("button", { name: "Create link" }).click();
-    await expect(page.getByRole("dialog")).toBeHidden();
+    //
+    // Idempotent across repeated runs against the same persistent local D1,
+    // the same way seed.ts's ensureLink is: /api/links has no hard-delete
+    // endpoint, so a slug this test already created on a previous run stays
+    // taken by that row forever. A previous run's row is found and
+    // normalised back to the canonical fields instead of driving the
+    // create-link dialog again — which would just show a "slug taken"
+    // field error and leave the dialog open, exactly the kind of failure
+    // that looks like a real regression but is only a fixture collision.
+    const existing = await findExistingLink(page, NON_ASCII_SLUG);
+    if (existing) {
+      if (existing.deletedAt) {
+        await page.request.post(`/api/links/${existing.id}/restore`);
+      }
+      await page.request.patch(`/api/links/${existing.id}`, {
+        data: {
+          targetUrl: "https://example.com/non-ascii",
+          title: NON_ASCII_TITLE,
+          isActive: true,
+        },
+      });
+    } else {
+      await page.goto("/app/links");
+      await page.getByRole("button", { name: "New link" }).click();
+      await page.getByLabel("Destination").fill("https://example.com/non-ascii");
+      await page.getByLabel("Custom slug").fill(NON_ASCII_SLUG);
+      await page.getByLabel("Title (optional)").fill(NON_ASCII_TITLE);
+      await page.getByRole("button", { name: "Create link" }).click();
+      await expect(page.getByRole("dialog")).toBeHidden();
+    }
 
     await page.goto("/app/settings");
     const downloadPromise = page.waitForEvent("download");
@@ -203,7 +250,7 @@ test.describe("artefacts — the QR and CSV defects (ebe93a8, b34c31d)", () => {
       "a title starting with = must be neutralised with a leading single quote",
     ).toBe("'=1+1 seasonal launch");
 
-    const nonAsciiRow = rows.find((row) => row[slugColumn] === "e2e-non-ascii");
+    const nonAsciiRow = rows.find((row) => row[slugColumn] === NON_ASCII_SLUG);
     expect(nonAsciiRow, "no exported row for the non-ASCII fixture link").toBeDefined();
     expect(nonAsciiRow?.[titleColumn]).toBe(NON_ASCII_TITLE);
 
