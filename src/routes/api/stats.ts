@@ -64,6 +64,15 @@ const topLinksRangeSchema = z
 
 const dimensionNames = Object.keys(DIMENSION_COLUMNS) as [DimensionName, ...DimensionName[]];
 
+/** `dow_hour` has a bounded, known maximum of 7 × 24 = 168 distinct values —
+ *  the heatmap's whole point is to show all of them, so the cap must not
+ *  truncate the grid it exists to render. Every other dimension has an
+ *  unbounded cardinality (an arbitrary country list, referrer host, UTM
+ *  campaign, …), where a cap is the right call — this raises the shared
+ *  cap to the one bounded dimension's actual maximum rather than special
+ *  -casing `name` in the schema. */
+const DIMENSION_LIMIT_MAX = 168;
+
 export const stats = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
 
 stats.use("*", requireSession);
@@ -107,7 +116,7 @@ stats.get("/dimension", async (c) => {
     .number()
     .int()
     .min(1)
-    .max(100)
+    .max(DIMENSION_LIMIT_MAX)
     .safeParse(c.req.query("limit") ?? 20);
   if (!limit.success) return c.json({ error: "invalid_limit" }, 400);
 

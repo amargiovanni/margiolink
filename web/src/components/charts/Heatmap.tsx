@@ -1,6 +1,13 @@
 import { Fragment } from "react";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** The bounded, known maximum a `dow_hour` dimension query can ever return:
+ *  7 days × 24 hours. Callers request exactly this many rows so the API's
+ *  `ORDER BY clicks DESC … LIMIT ?` never truncates a cell this grid would
+ *  otherwise render — a cell absent from the response is genuinely zero,
+ *  but only once the request itself could not have dropped it. */
+export const HEATMAP_CELLS = DAYS.length * 24;
 const RAMP = [
   "var(--color-ramp-1)",
   "var(--color-ramp-2)",

@@ -149,6 +149,32 @@ describe("GET /api/stats/dimension", () => {
     expect(res.status).toBe(400);
   });
 
+  // dow_hour has a bounded, known maximum of 7 * 24 = 168 distinct values —
+  // the heatmap's whole point is to show every one of them, so a cap that
+  // still truncates the grid at 100 is the defect this test guards against.
+  it("returns more than 100 distinct dow_hour cells when more than 100 exist", async () => {
+    const DISTINCT_DAYS = 5;
+    for (let day = 0; day < DISTINCT_DAYS; day++) {
+      for (let hour = 0; hour < 24; hour++) {
+        await insertClick(BASE + day * DAY + hour * 3600);
+      }
+    }
+
+    const res = await api(
+      `/api/stats/dimension?name=dow_hour&from=${BASE}&to=${BASE + DISTINCT_DAYS * DAY}&limit=168`,
+    );
+    const body = (await res.json()) as { slices: { value: string }[] };
+    expect(body.slices).toHaveLength(DISTINCT_DAYS * 24);
+    expect(new Set(body.slices.map((s) => s.value)).size).toBe(DISTINCT_DAYS * 24);
+  });
+
+  it("rejects a limit above dow_hour's own 168-cell bound", async () => {
+    const res = await api(
+      `/api/stats/dimension?name=dow_hour&from=${BASE}&to=${BASE + DAY}&limit=169`,
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("rejects a range where from is after to", async () => {
     const res = await api(`/api/stats/dimension?name=country&from=${BASE + DAY}&to=${BASE}`);
     expect(res.status).toBe(400);
