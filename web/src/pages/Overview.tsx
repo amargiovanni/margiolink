@@ -1,15 +1,28 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import { ChartFrame } from "../components/charts/ChartFrame";
-import { Heatmap } from "../components/charts/Heatmap";
+import { HEATMAP_CELLS, Heatmap } from "../components/charts/Heatmap";
 import { RankedBars } from "../components/charts/RankedBars";
 import { StatTile } from "../components/charts/StatTile";
 import { TimeSeries } from "../components/charts/TimeSeries";
 import { WorldMap } from "../components/charts/WorldMap";
 import { PeriodPicker } from "../components/PeriodPicker";
 import { formatCount } from "../lib/format";
-import { type Range, useDimension, useSummary, useTimeseries, useTopLinks } from "../lib/queries";
-import { granularityFor, type PeriodId, rangeFor } from "../lib/ranges";
+import {
+  type Range,
+  useDimension,
+  useMeta,
+  useSummary,
+  useTimeseries,
+  useTopLinks,
+} from "../lib/queries";
+import {
+  droppedPeriodsNote,
+  granularityFor,
+  type PeriodId,
+  periodsFor,
+  rangeFor,
+} from "../lib/ranges";
 
 const UNIQUES_HINT =
   "A visitor returning on several days is counted once per day — the privacy design rotates their code at midnight.";
@@ -36,7 +49,12 @@ function DimensionPanel({
   query: ReturnType<typeof useDimension>;
 }) {
   return (
-    <ChartFrame title={title} table={toTable(title, query.data?.slices ?? [])}>
+    <ChartFrame
+      title={title}
+      table={toTable(title, query.data?.slices ?? [])}
+      status={query.isError ? "error" : query.isPending ? "pending" : undefined}
+      errorMessage="Could not load this breakdown."
+    >
       {query.isError ? (
         <p role="alert" className="py-6 text-center text-sm text-critical">
           Could not load this breakdown.
@@ -69,6 +87,8 @@ function TopLinksPanel({ range }: { range: Range }) {
         columns: ["Link", "Clicks", "Uniques"],
         rows: links.map((l) => [l.title || l.slug, l.clicks, l.uniques]),
       }}
+      status={query.isError ? "error" : query.isPending ? "pending" : undefined}
+      errorMessage="Could not load top links."
     >
       {query.isError ? (
         <p role="alert" className="py-6 text-center text-sm text-critical">
@@ -169,6 +189,24 @@ function BotShareTile({
  * line drawn from `current`/`previous` — see the task brief. */
 export default function Overview() {
   const [periodId, setPeriodId] = useState<PeriodId>("7d");
+  const metaQuery = useMeta();
+  const retentionDays = metaQuery.data?.retentionDays;
+  const periods = retentionDays !== undefined ? periodsFor(retentionDays) : [];
+  const periodNote = retentionDays !== undefined ? droppedPeriodsNote(retentionDays) : null;
+
+  // Once the deployment's real retention is known, a previously-selected
+  // period that retention no longer supports (e.g. "12m" against a shorter
+  // window than when the page first rendered) must not stay silently
+  // selected — that would keep fetching the exact false comparison this
+  // guard exists to prevent. Falls back to the longest period retention
+  // still supports, defaulting to the picker's own initial choice, "7d",
+  // when nothing does.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only a change in the known retention window should re-run this — `periods` is a fresh array every render (recomputed from `periodsFor`) and `periodId` is this same effect's own target, so listing either would re-run it every render or fight the very state it sets.
+  useEffect(() => {
+    if (retentionDays === undefined) return;
+    if (periods.some((p) => p.id === periodId)) return;
+    setPeriodId(periods.at(-1)?.id ?? "7d");
+  }, [retentionDays]);
 
   const { from, to } = rangeFor(periodId);
   const range = useMemo(() => ({ from, to }), [from, to]);
@@ -179,7 +217,7 @@ export default function Overview() {
   const countryQuery = useDimension(range, "country");
   const deviceQuery = useDimension(range, "device");
   const channelQuery = useDimension(range, "referrer_type");
-  const hourlyQuery = useDimension(range, "dow_hour", 100);
+  const hourlyQuery = useDimension(range, "dow_hour", HEATMAP_CELLS);
 
   const buckets = timeseriesQuery.data?.buckets ?? [];
   const clickSpark = timeseriesQuery.isSuccess ? buckets.map((b) => b.clicks) : undefined;
@@ -189,7 +227,20 @@ export default function Overview() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="font-display text-3xl text-ink">Overview</h1>
-        <PeriodPicker value={periodId} onChange={setPeriodId} />
+        <div className="flex flex-col items-end gap-1">
+          {metaQuery.isError ? (
+            <p role="alert" className="text-xs text-critical">
+              Could not load the retention window. Showing the last 7 days only.
+            </p>
+          ) : metaQuery.isPending ? (
+            <p className="text-xs text-ink-muted">Loading period options…</p>
+          ) : (
+            <>
+              <PeriodPicker value={periodId} onChange={setPeriodId} periods={periods} />
+              {periodNote && <p className="text-xs text-ink-faint">{periodNote}</p>}
+            </>
+          )}
+        </div>
       </header>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -239,6 +290,10 @@ export default function Overview() {
           columns: ["Bucket", "Clicks", "Uniques"],
           rows: buckets.map((bucket) => [bucket.bucket, bucket.clicks, bucket.uniques]),
         }}
+        status={
+          timeseriesQuery.isError ? "error" : timeseriesQuery.isPending ? "pending" : undefined
+        }
+        errorMessage="Could not load the time series."
       >
         {timeseriesQuery.isError ? (
           <p role="alert" className="py-6 text-center text-sm text-critical">
@@ -257,6 +312,8 @@ export default function Overview() {
         <ChartFrame
           title="Clicks by country"
           table={toTable("Country", countryQuery.data?.slices ?? [])}
+          status={countryQuery.isError ? "error" : countryQuery.isPending ? "pending" : undefined}
+          errorMessage="Could not load the map."
         >
           {countryQuery.isError ? (
             <p role="alert" className="py-6 text-center text-sm text-critical">
@@ -277,6 +334,8 @@ export default function Overview() {
         title="Activity by hour"
         description="Clicks by day of week and hour."
         table={toTable("Hour", hourlyQuery.data?.slices ?? [])}
+        status={hourlyQuery.isError ? "error" : hourlyQuery.isPending ? "pending" : undefined}
+        errorMessage="Could not load the heatmap."
       >
         {hourlyQuery.isError ? (
           <p role="alert" className="py-6 text-center text-sm text-critical">

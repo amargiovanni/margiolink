@@ -32,6 +32,11 @@ function dimensionByName(byName: Record<string, unknown>, fallback: unknown = { 
 }
 
 const DEFAULT_ROUTES: Record<string, Handler> = {
+  // Matches the deployment's real `RAW_RETENTION_DAYS` (`wrangler.jsonc`)
+  // rather than an arbitrary test value, so the same 24h/7d/30d/90d — no
+  // 12m — split the reviewer's ruling names is what every test below
+  // actually exercises.
+  "/api/meta": { retentionDays: 180, shortDomain: "link.test" },
   "/api/stats/summary": { current: CURRENT, previous: PREVIOUS, range: {} },
   "/api/stats/timeseries": {
     buckets: [
@@ -143,6 +148,81 @@ describe("Overview", () => {
     renderOverview();
     await screen.findByText("1,234");
     expect(screen.getByText(/counted once per day/i)).toBeInTheDocument();
+  });
+
+  it("does not offer 12 months when its comparison window would fall outside the retention window", async () => {
+    stub(DEFAULT_ROUTES);
+    renderOverview();
+    await screen.findByText("1,234");
+
+    // 180 days of retention covers 12m's own 365-day span but not its
+    // preceding 365-day comparison window (730 days back) — see
+    // `periodsFor` in `lib/ranges.ts`.
+    expect(screen.queryByRole("radio", { name: /12 months/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /90 days/i })).toBeInTheDocument();
+    expect(screen.getByText(/180-day retention window/i)).toBeInTheDocument();
+  });
+
+  it("requests every one of the heatmap's 168 possible cells, not the old 100-row cap", async () => {
+    stub(DEFAULT_ROUTES);
+    renderOverview();
+    await screen.findByText("1,234");
+
+    await waitFor(() => {
+      const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const call = calls.find((c) => {
+        const url = new URL(String(c[0]), "https://link.test");
+        return (
+          url.pathname === "/api/stats/dimension" && url.searchParams.get("name") === "dow_hour"
+        );
+      });
+      expect(call, "dow_hour dimension query was never made").toBeDefined();
+      const url = new URL(String(call?.[0]), "https://link.test");
+      expect(url.searchParams.get("limit")).toBe("168");
+    });
+  });
+
+  it("shows an alert and no picker when the retention window fails to load", async () => {
+    const { "/api/meta": _omit, ...routesWithoutMeta } = DEFAULT_ROUTES;
+    stub(routesWithoutMeta);
+    renderOverview();
+    await screen.findByText("1,234");
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/could not load the retention/i);
+    expect(screen.queryByRole("radiogroup", { name: /period/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the same failure in a dimension panel's table pane that its chart pane shows", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = new URL(String(input), "https://link.test");
+        if (url.pathname === "/api/stats/dimension" && url.searchParams.get("name") === "device") {
+          return Response.json({ error: "boom" }, { status: 500 });
+        }
+        const entry = DEFAULT_ROUTES[url.pathname];
+        const resolved = typeof entry === "function" ? (entry as (u: URL) => unknown)(url) : entry;
+        return resolved === undefined
+          ? Response.json({ error: "not_found" }, { status: 404 })
+          : Response.json(resolved);
+      }),
+    );
+    renderOverview();
+    await screen.findByText("1,234");
+
+    const devicesHeading = await screen.findByText("Devices");
+    const panel = devicesHeading.closest("section") as HTMLElement;
+    expect(await within(panel).findByRole("alert")).toHaveTextContent(
+      /could not load this breakdown/i,
+    );
+
+    await userEvent.click(within(panel).getByRole("button", { name: /table/i }));
+
+    // Same failure in the table pane, not the false "successful empty
+    // period" a plain `[]` table would render.
+    expect(within(panel).getByRole("alert")).toHaveTextContent(/could not load this breakdown/i);
+    expect(within(panel).queryByRole("table")).not.toBeInTheDocument();
   });
 
   it("shows an alert rather than four zeros when the summary fails to load", async () => {

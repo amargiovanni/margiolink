@@ -55,6 +55,8 @@ function dimensionByName(byName: Record<string, unknown>, fallback: unknown = SO
 
 const DEFAULT_ROUTES: Record<string, Handler> = {
   "/api/links/1": { link: LINK },
+  // Matches the deployment's real `RAW_RETENTION_DAYS` (`wrangler.jsonc`).
+  "/api/meta": { retentionDays: 180, shortDomain: "link.test" },
   "/api/stats/summary": { current: EMPTY_SUMMARY, previous: EMPTY_SUMMARY, range: {} },
   "/api/stats/timeseries": { buckets: [], granularity: "day" },
   "/api/stats/dimension": dimensionByName({}),
@@ -138,6 +140,35 @@ describe("LinkDetail", () => {
     });
   });
 
+  it("requests all 168 of the heatmap's possible cells, not the old 100-row cap", async () => {
+    stub(DEFAULT_ROUTES);
+    renderDetail();
+    await screen.findByText("demo");
+
+    await waitFor(() => {
+      const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const call = calls.find((c) => {
+        const url = new URL(String(c[0]), "https://link.test");
+        return (
+          url.pathname === "/api/stats/dimension" && url.searchParams.get("name") === "dow_hour"
+        );
+      });
+      expect(call, "dow_hour dimension query was never made").toBeDefined();
+      const url = new URL(String(call?.[0]), "https://link.test");
+      expect(url.searchParams.get("limit")).toBe("168");
+    });
+  });
+
+  it("does not offer 12 months when its comparison window would fall outside the retention window", async () => {
+    stub(DEFAULT_ROUTES);
+    renderDetail();
+    await screen.findByText("demo");
+
+    expect(screen.queryByRole("button", { name: "12 months" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "90 days" })).toBeInTheDocument();
+    expect(screen.getByText(/180-day retention window/i)).toBeInTheDocument();
+  });
+
   it("lists recent clicks in the live feed", async () => {
     stub({
       ...DEFAULT_ROUTES,
@@ -217,6 +248,28 @@ describe("LinkDetail", () => {
     await waitFor(() => {
       expect(liveCallCount()).toBeGreaterThan(countWhilePaused);
     });
+  });
+
+  it("shows the same failure in a dimension panel's table pane that its chart pane shows", async () => {
+    stub({
+      ...DEFAULT_ROUTES,
+      "/api/stats/dimension": dimensionByName({
+        country: { status: 500, body: { error: "boom" } },
+      }),
+    });
+    renderDetail();
+    const countriesHeading = await screen.findByText("Countries");
+    const panel = countriesHeading.closest("section") as HTMLElement;
+    expect(await within(panel).findByRole("alert")).toHaveTextContent(
+      /could not load this breakdown/i,
+    );
+
+    await userEvent.click(within(panel).getByRole("button", { name: /table/i }));
+
+    // Same failure in the table pane, not the false "successful empty
+    // period" a plain `[]` table would render.
+    expect(within(panel).getByRole("alert")).toHaveTextContent(/could not load this breakdown/i);
+    expect(within(panel).queryByRole("table")).not.toBeInTheDocument();
   });
 
   it("derives a flag glyph from the country's alpha-2 code", async () => {

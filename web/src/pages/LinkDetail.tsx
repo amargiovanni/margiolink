@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router";
 import { ChartFrame } from "../components/charts/ChartFrame";
-import { Heatmap } from "../components/charts/Heatmap";
+import { HEATMAP_CELLS, Heatmap } from "../components/charts/Heatmap";
 import { LiveFeed } from "../components/charts/LiveFeed";
 import { RankedBars } from "../components/charts/RankedBars";
 import { StatTile } from "../components/charts/StatTile";
@@ -9,8 +9,14 @@ import { TimeSeries } from "../components/charts/TimeSeries";
 import { CopyButton } from "../components/links/CopyButton";
 import { QrPanel } from "../components/links/QrPanel";
 import { ApiError } from "../lib/api";
-import { useDimension, useLink, useSummary, useTimeseries } from "../lib/queries";
-import { granularityFor, PERIODS, type PeriodId, rangeFor } from "../lib/ranges";
+import { useDimension, useLink, useMeta, useSummary, useTimeseries } from "../lib/queries";
+import {
+  droppedPeriodsNote,
+  granularityFor,
+  type PeriodId,
+  periodsFor,
+  rangeFor,
+} from "../lib/ranges";
 
 type Slice = { value: string; clicks: number; uniques: number };
 type DimensionQuery = ReturnType<typeof useDimension>;
@@ -63,7 +69,13 @@ function DimensionPanel({
     : rawSlices;
 
   return (
-    <ChartFrame title={title} description={description} table={toTable(title, slices)}>
+    <ChartFrame
+      title={title}
+      description={description}
+      table={toTable(title, slices)}
+      status={query.isError ? "error" : query.isPending ? "pending" : undefined}
+      errorMessage="Could not load this breakdown."
+    >
       {query.isError ? (
         <p role="alert" className="py-6 text-center text-sm text-critical">
           Could not load this breakdown.
@@ -89,6 +101,20 @@ export default function LinkDetail() {
   const { id } = useParams<{ id: string }>();
   const linkId = Number(id);
   const [periodId, setPeriodId] = useState<PeriodId>("7d");
+  const metaQuery = useMeta();
+  const retentionDays = metaQuery.data?.retentionDays;
+  const periods = retentionDays !== undefined ? periodsFor(retentionDays) : [];
+  const periodNote = retentionDays !== undefined ? droppedPeriodsNote(retentionDays) : null;
+
+  // Same guard as Overview's — see the comment there. A period retention no
+  // longer supports must not stay silently selected once the deployment's
+  // real retention is known.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only a change in the known retention window should re-run this — `periods` is a fresh array every render (recomputed from `periodsFor`) and `periodId` is this same effect's own target, so listing either would re-run it every render or fight the very state it sets.
+  useEffect(() => {
+    if (retentionDays === undefined) return;
+    if (periods.some((p) => p.id === periodId)) return;
+    setPeriodId(periods.at(-1)?.id ?? "7d");
+  }, [retentionDays]);
 
   const linkQuery = useLink(linkId);
 
@@ -99,13 +125,10 @@ export default function LinkDetail() {
   const summaryQuery = useSummary(range);
   const timeseriesQuery = useTimeseries(range, granularity);
 
-  // dow_hour has at most 168 possible cells (7 days × 24 hours); the
-  // dimension endpoint caps `limit` at 100, so a very active link can still
-  // lose its least-frequent hours off a long window. That cap predates this
-  // page and applies to every dimension, not just this one — raising it is
-  // outside this task's scope, so the heatmap simply asks for as many rows
-  // as the endpoint will give it.
-  const hourlyQuery = useDimension(range, "dow_hour", 100);
+  // dow_hour has at most 168 possible cells (7 days × 24 hours) — the
+  // heatmap requests all of them, and the dimension endpoint's cap is now
+  // raised to allow it (see `src/routes/api/stats.ts`).
+  const hourlyQuery = useDimension(range, "dow_hour", HEATMAP_CELLS);
 
   const countryQuery = useDimension(range, "country");
   const cityQuery = useDimension(range, "city");
@@ -168,23 +191,36 @@ export default function LinkDetail() {
           </div>
         </div>
 
-        <fieldset aria-label="Period" className="m-0 flex flex-wrap gap-1 border-0 p-0">
-          {PERIODS.map((period) => (
-            <button
-              key={period.id}
-              type="button"
-              aria-pressed={period.id === periodId}
-              onClick={() => setPeriodId(period.id)}
-              className={`rounded border px-3 py-1.5 text-sm transition-colors ${
-                period.id === periodId
-                  ? "border-accent bg-accent text-accent-ink"
-                  : "border-rule text-ink-muted hover:text-ink"
-              }`}
-            >
-              {period.label}
-            </button>
-          ))}
-        </fieldset>
+        <div className="flex flex-col items-end gap-1">
+          {metaQuery.isError ? (
+            <p role="alert" className="text-xs text-critical">
+              Could not load the retention window. Showing the last 7 days only.
+            </p>
+          ) : metaQuery.isPending ? (
+            <p className="text-xs text-ink-muted">Loading period options…</p>
+          ) : (
+            <>
+              <fieldset aria-label="Period" className="m-0 flex flex-wrap gap-1 border-0 p-0">
+                {periods.map((period) => (
+                  <button
+                    key={period.id}
+                    type="button"
+                    aria-pressed={period.id === periodId}
+                    onClick={() => setPeriodId(period.id)}
+                    className={`rounded border px-3 py-1.5 text-sm transition-colors ${
+                      period.id === periodId
+                        ? "border-accent bg-accent text-accent-ink"
+                        : "border-rule text-ink-muted hover:text-ink"
+                    }`}
+                  >
+                    {period.label}
+                  </button>
+                ))}
+              </fieldset>
+              {periodNote && <p className="text-xs text-ink-faint">{periodNote}</p>}
+            </>
+          )}
+        </div>
       </header>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -234,6 +270,10 @@ export default function LinkDetail() {
             bucket.uniques,
           ]),
         }}
+        status={
+          timeseriesQuery.isError ? "error" : timeseriesQuery.isPending ? "pending" : undefined
+        }
+        errorMessage="Could not load the time series."
       >
         {timeseriesQuery.isError ? (
           <p role="alert" className="py-6 text-center text-sm text-critical">
@@ -250,6 +290,8 @@ export default function LinkDetail() {
         title="Activity by hour"
         description="Clicks by day of week and hour."
         table={toTable("Hour", hourlyQuery.data?.slices ?? [])}
+        status={hourlyQuery.isError ? "error" : hourlyQuery.isPending ? "pending" : undefined}
+        errorMessage="Could not load the heatmap."
       >
         {hourlyQuery.isError ? (
           <p role="alert" className="py-6 text-center text-sm text-critical">

@@ -163,6 +163,7 @@ const PAGES: ({
     name: "Overview",
     renderPage: () => {
       stub({
+        "/api/meta": { retentionDays: 180, shortDomain: "link.test" },
         "/api/stats/summary": SUMMARY,
         "/api/stats/timeseries": TIMESERIES,
         "/api/stats/dimension": dimensionByName({
@@ -177,7 +178,7 @@ const PAGES: ({
     },
     ready: () => screen.findByText("Clicks by country"),
     images: "none",
-    formControls: "some", // PeriodPicker's 5 native radios
+    formControls: "some", // PeriodPicker's 4 native radios (180 days' retention drops 12m)
     tabbable: "some", // TimeSeries's crosshair
     charts: "some",
   },
@@ -202,6 +203,7 @@ const PAGES: ({
     renderPage: () => {
       stub({
         "/api/links/1": { link: LINK },
+        "/api/meta": { retentionDays: 180, shortDomain: "link.test" },
         "/api/stats/summary": SUMMARY,
         "/api/stats/timeseries": TIMESERIES,
         "/api/stats/dimension": dimensionByName({
