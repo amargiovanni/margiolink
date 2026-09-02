@@ -96,10 +96,29 @@ describe("CommandPalette", () => {
     expect(await screen.findByText("Spring Launch")).toBeInTheDocument();
   });
 
-  it("does not open while focus is inside a text field", async () => {
-    renderPalette(<input aria-label="Somewhere else on the page" />);
-    const input = screen.getByRole("textbox", { name: /somewhere else/i });
-    input.focus();
+  it("opens even while focus is in the links page's own search box — there is no other way to reach it from there", async () => {
+    renderPalette(<input type="search" aria-label="Search" />);
+    const searchBox = screen.getByRole("searchbox", { name: /search/i });
+    searchBox.focus();
+
+    await userEvent.keyboard("{Meta>}k{/Meta}");
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("does not open while focus is inside a rich-text editor, which binds Ctrl/Cmd+K itself", async () => {
+    renderPalette(
+      // biome-ignore lint/a11y/useSemanticElements: standing in for a real rich-text editor's contentEditable region — the whole point of this test is that it is not a plain <input>/<textarea>.
+      <div contentEditable role="textbox" tabIndex={0} aria-label="Notes" />,
+    );
+    const editor = screen.getByRole("textbox", { name: /notes/i });
+    // jsdom does not implement `HTMLElement.isContentEditable` (it has no
+    // layout/rendering engine behind it), so the `contentEditable` attribute
+    // alone doesn't make this getter true here the way it would in a real
+    // browser — defined directly so the guard under test sees what it would
+    // see there.
+    Object.defineProperty(editor, "isContentEditable", { value: true, configurable: true });
+    editor.focus();
 
     await userEvent.keyboard("{Meta>}k{/Meta}");
 

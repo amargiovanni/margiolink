@@ -8,11 +8,13 @@ import { SECTIONS } from "../layout/PrimaryNav";
 const ITEM_CLASSNAME =
   "cursor-pointer rounded px-2 py-2 text-sm text-ink data-[selected=true]:bg-surface-sunken";
 const GROUP_CLASSNAME = "px-2 py-1 text-xs text-ink-faint [&_[cmdk-group-items]]:mt-1";
-const FORM_FIELD_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
 
-function isFormField(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || FORM_FIELD_TAGS.has(target.tagName);
+// `event.target` reports the host element rather than the actual field for
+// a Shadow-DOM web component (event retargeting), which would defeat this
+// check. Not exploitable today — this app has no web components — but worth
+// remembering if one is ever introduced here.
+function isRichTextEditor(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && target.isContentEditable;
 }
 
 /** The recent-links section is its own component, rendered only inside
@@ -64,13 +66,15 @@ export function CommandPalette() {
       // plain Alt/Option+K carries no meaning here either, so leave any
       // modified-beyond-the-two-we-bind combination alone.
       if (event.shiftKey || event.altKey) return;
-      // Any place where typing "k" while holding the modifier means
-      // something to the field itself — a text input, a textarea, a
-      // select, or a rich-text editor's own Ctrl/Cmd+K binding (e.g.
-      // "insert link", common in WYSIWYG editors) — the field's own
-      // behaviour wins and this shortcut stays out of its way, including
-      // the Links page's own search box.
-      if (isFormField(event.target)) return;
+      // A plain <input>/<textarea>/<select> has no competing meaning for
+      // ⌘K/Ctrl+K — taking it there is exactly what makes a command palette
+      // useful (Linear, GitHub and Slack all do this too): you reach for it
+      // mid-typing, including from this app's own links-page search box,
+      // which is why this does NOT also exclude form fields in general. A
+      // rich-text editor is the one real exception, since Ctrl/Cmd+K
+      // conventionally means "insert link" there — that's the only field
+      // this shortcut steps aside for.
+      if (isRichTextEditor(event.target)) return;
       event.preventDefault();
       setOpen((value) => !value);
     }
