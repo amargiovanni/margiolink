@@ -194,7 +194,7 @@ test.describe("keyboard access — the focus defects (acb7738)", () => {
     });
 
     await page.keyboard.press("Enter"); // selects Delete, opening ConfirmDialog
-    const confirmDialog = page.getByRole("dialog").filter({ hasText: "This cannot be undone." });
+    const confirmDialog = page.getByRole("dialog").filter({ hasText: "from resolving" });
     await expect(confirmDialog).toBeVisible();
     // ConfirmDialog's onOpenAutoFocus puts default focus on Cancel, not
     // Radix's own default (this dialog's Close "×" button).

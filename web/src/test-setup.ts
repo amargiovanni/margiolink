@@ -21,3 +21,19 @@ if (!("ResizeObserver" in globalThis)) {
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
+
+// jsdom implements the `PointerEvent` constructor but not the pointer
+// capture methods `@radix-ui/react-select`'s trigger calls on open —
+// `hasPointerCapture`, `setPointerCapture`, `releasePointerCapture` — so a
+// real `userEvent.click` on the trigger throws `target.hasPointerCapture is
+// not a function` before Radix ever gets to open the listbox. No-op stubs
+// are enough: nothing here depends on pointer capture actually happening.
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false;
+}
+if (!Element.prototype.setPointerCapture) {
+  Element.prototype.setPointerCapture = () => {};
+}
+if (!Element.prototype.releasePointerCapture) {
+  Element.prototype.releasePointerCapture = () => {};
+}

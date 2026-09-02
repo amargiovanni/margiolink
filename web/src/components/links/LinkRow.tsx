@@ -1,11 +1,11 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { MoreHorizontal, Pencil, Power, QrCode, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Power, QrCode, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link as RouterLink, useNavigate } from "react-router";
 import { hexToRgb, readableTextColor } from "../../lib/contrast";
 import { formatCount } from "../../lib/format";
 import type { Link, Tag } from "../../lib/queries";
-import { useDeleteLink, useUpdateLink } from "../../lib/queries";
+import { useDeleteLink, useRestoreLink, useUpdateLink } from "../../lib/queries";
 import { Sparkline } from "../charts/Sparkline";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -71,9 +71,11 @@ export interface LinkRowProps {
  *  rather than `disabled`. */
 export function LinkRow({ link, sparkline }: LinkRowProps) {
   const clicks = sparkline?.reduce((sum, value) => sum + value, 0) ?? null;
+  const isDeleted = link.deletedAt !== null;
   const navigate = useNavigate();
   const updateMutation = useUpdateLink();
   const deleteMutation = useDeleteLink();
+  const restoreMutation = useRestoreLink();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -110,7 +112,8 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
           >
             {link.slug}
           </RouterLink>
-          {!link.isActive && <Badge tone="warning">Inactive</Badge>}
+          {isDeleted && <Badge tone="critical">Deleted</Badge>}
+          {!isDeleted && !link.isActive && <Badge tone="warning">Inactive</Badge>}
           {link.tags.map((tag) => (
             <TagBadge key={tag.id} tag={tag} />
           ))}
@@ -144,28 +147,47 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
               align="end"
               className="min-w-40 rounded border border-rule bg-surface-raised p-1 shadow-lg"
             >
-              <DropdownMenu.Item onSelect={() => setEditOpen(true)} className={MENU_ITEM_CLASSNAME}>
-                <Pencil className="size-4" aria-hidden="true" />
-                Edit
-              </DropdownMenu.Item>
-              <DropdownMenu.Item
-                onSelect={() => navigate(`/links/${link.id}`)}
-                className={MENU_ITEM_CLASSNAME}
-              >
-                <QrCode className="size-4" aria-hidden="true" />
-                QR code
-              </DropdownMenu.Item>
-              <DropdownMenu.Item onSelect={handleToggleActive} className={MENU_ITEM_CLASSNAME}>
-                <Power className="size-4" aria-hidden="true" />
-                {link.isActive ? "Deactivate" : "Activate"}
-              </DropdownMenu.Item>
-              <DropdownMenu.Item
-                onSelect={handleOpenDelete}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-critical outline-none data-[highlighted]:bg-critical/10"
-              >
-                <Trash2 className="size-4" aria-hidden="true" />
-                Delete
-              </DropdownMenu.Item>
+              {isDeleted ? (
+                // A deleted link's identity is frozen except for one way
+                // back: restoring it. Edit, QR code, Deactivate and Delete
+                // all assume a link that still resolves, so none of them
+                // belong on a row that no longer does.
+                <DropdownMenu.Item
+                  onSelect={() => restoreMutation.mutate(link.id)}
+                  className={MENU_ITEM_CLASSNAME}
+                >
+                  <RotateCcw className="size-4" aria-hidden="true" />
+                  Restore
+                </DropdownMenu.Item>
+              ) : (
+                <>
+                  <DropdownMenu.Item
+                    onSelect={() => setEditOpen(true)}
+                    className={MENU_ITEM_CLASSNAME}
+                  >
+                    <Pencil className="size-4" aria-hidden="true" />
+                    Edit
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={() => navigate(`/links/${link.id}`)}
+                    className={MENU_ITEM_CLASSNAME}
+                  >
+                    <QrCode className="size-4" aria-hidden="true" />
+                    QR code
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item onSelect={handleToggleActive} className={MENU_ITEM_CLASSNAME}>
+                    <Power className="size-4" aria-hidden="true" />
+                    {link.isActive ? "Deactivate" : "Activate"}
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={handleOpenDelete}
+                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-critical outline-none data-[highlighted]:bg-critical/10"
+                  >
+                    <Trash2 className="size-4" aria-hidden="true" />
+                    Delete
+                  </DropdownMenu.Item>
+                </>
+              )}
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
@@ -177,7 +199,7 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title={`Delete ${link.slug}?`}
-        description="This permanently deletes the link and its click history. This cannot be undone."
+        description={`This stops ${link.slug} from resolving right away. Its slug stays reserved so it can never be reassigned to a different destination — restore it any time from the Deleted filter on this page.`}
         confirmLabel="Delete"
         confirming={deleteMutation.isPending}
         error={deleteError}

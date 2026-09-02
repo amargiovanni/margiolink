@@ -16,6 +16,11 @@ const STATUS_OPTIONS = [
   { value: "active", label: "Active" },
   { value: "inactive", label: "Inactive" },
   { value: "expired", label: "Expired" },
+  // `status=deleted` is the only filter value the API's own "all" doesn't
+  // cover — `listLinks` excludes soft-deleted rows even under "all" (see
+  // `src/db/links.ts`), so a deleted link is otherwise unreachable from this
+  // page even though `useRestoreLink` exists to bring one back.
+  { value: "deleted", label: "Deleted" },
 ];
 
 /** The working list — spec §6.1. Search asks the API rather than filtering

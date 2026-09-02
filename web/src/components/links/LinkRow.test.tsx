@@ -209,6 +209,54 @@ describe("LinkRow", () => {
     );
   });
 
+  it("names the slug and the restore path in the delete confirmation, rather than claiming it's permanent", async () => {
+    stubFetch();
+    renderRow([]);
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /delete/i }));
+
+    const dialog = await screen.findByRole("dialog", { name: /delete launch/i });
+    expect(dialog).toHaveTextContent("launch");
+    expect(dialog).toHaveTextContent(/deleted filter/i);
+    // Delete is soft — the row survives and the slug stays reserved — so the
+    // confirmation must not claim the operation is permanent or unreversible.
+    expect(dialog).not.toHaveTextContent(/permanently/i);
+    expect(dialog).not.toHaveTextContent(/cannot be undone/i);
+  });
+
+  it("marks a deleted link with a Deleted badge", () => {
+    renderRow([], { ...LINK, deletedAt: 1_800_000_500 });
+    expect(screen.getByText("Deleted")).toBeInTheDocument();
+  });
+
+  it("offers only Restore from a deleted link's menu, not Edit, QR code, Deactivate or Delete", async () => {
+    stubFetch();
+    renderRow([], { ...LINK, deletedAt: 1_800_000_500 });
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+
+    expect(await screen.findByRole("menuitem", { name: /restore/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /^edit$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /qr code/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /deactivate/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /^delete$/i })).not.toBeInTheDocument();
+  });
+
+  it("restores a deleted link with a single click and no confirmation", async () => {
+    const spy = stubFetch();
+    renderRow([], { ...LINK, deletedAt: 1_800_000_500 });
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /restore/i }));
+
+    await waitFor(() => {
+      const call = spy.mock.calls.find(
+        (c) =>
+          new URL(String(c[0]), "https://link.test").pathname === "/api/links/1/restore" &&
+          (c[1] as RequestInit | undefined)?.method === "POST",
+      );
+      expect(call).toBeTruthy();
+    });
+  });
+
   it("surfaces a failed delete rather than showing nothing", async () => {
     vi.stubGlobal(
       "fetch",

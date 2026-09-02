@@ -153,6 +153,40 @@ describe("Links", () => {
     expect(screen.queryByText(/^0 clicks/)).not.toBeInTheDocument();
   });
 
+  it("offers a Deleted status filter and requests status=deleted, so a soft-deleted link can be found and restored", async () => {
+    const DELETED_LINK = { ...LINK, id: 2, slug: "gone", deletedAt: 1_800_000_500 };
+    stub({
+      "/api/links": LINKS,
+      "/api/tags": { tags: [] },
+      "/api/stats/sparklines": { days: 7, series: {} },
+    });
+    renderLinks();
+    await screen.findByText("launch");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = new URL(String(input), "https://link.test");
+        if (url.pathname === "/api/links" && url.searchParams.get("status") === "deleted") {
+          return Response.json({ links: [DELETED_LINK], total: 1 });
+        }
+        if (url.pathname === "/api/links") return Response.json(LINKS);
+        if (url.pathname === "/api/tags") return Response.json({ tags: [] });
+        if (url.pathname === "/api/stats/sparklines") return Response.json({ days: 7, series: {} });
+        return Response.json({ error: "not_found" }, { status: 404 });
+      }),
+    );
+
+    await userEvent.click(screen.getByRole("combobox", { name: /^status$/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Deleted" }));
+
+    expect(await screen.findByText("gone")).toBeInTheDocument();
+    // The row itself carries the "Deleted" badge — so this appears twice
+    // (the filter's own selected value, and the badge), which
+    // `getAllByText` rather than `getByText` accounts for.
+    expect(screen.getAllByText("Deleted").length).toBeGreaterThan(0);
+  });
+
   it("says the tag filter is unavailable rather than looking like there are no tags when the tags request fails", async () => {
     vi.stubGlobal(
       "fetch",
