@@ -1,6 +1,6 @@
 # Legitimate Interest Assessment — click analytics
 
-**Controller:** the operator of link.margio.uk
+**Controller:** Andrea Margiovanni — andrea@margiovanni.it
 **Processing:** recording and aggregating clicks on short links
 **Legal basis claimed:** Article 6(1)(f) GDPR
 **Assessed:** 2026-09-01

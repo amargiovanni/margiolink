@@ -25,6 +25,19 @@ describe("GET /privacy", () => {
     expect(body).toMatch(/password/i);
     expect(body).toContain("ten minutes");
   });
+
+  // Article 13 GDPR requires the controller's identity and contact details.
+  // A notice that says only "the operator" does not satisfy it.
+  it("names the controller and gives a contact route", async () => {
+    const body = await (await SELF.fetch("https://link.test/privacy")).text();
+    expect(body).toContain("Andrea Margiovanni");
+    expect(body).toContain("mailto:andrea@margiovanni.it");
+  });
+
+  it("names the supervisory authority a complaint can go to", async () => {
+    const body = await (await SELF.fetch("https://link.test/privacy")).text();
+    expect(body).toMatch(/garante/i);
+  });
 });
 
 describe("GET /robots.txt", () => {
@@ -46,6 +59,11 @@ describe("GET /.well-known/security.txt", () => {
     const body = await (await SELF.fetch("https://link.test/.well-known/security.txt")).text();
     expect(body).toMatch(/^Contact: \S+/m);
     expect(body).toMatch(/^Expires: \S+/m);
+  });
+
+  it("offers a contact route that does not require a GitHub account", async () => {
+    const body = await (await SELF.fetch("https://link.test/.well-known/security.txt")).text();
+    expect(body).toContain("Contact: mailto:andrea@margiovanni.it");
   });
 
   it("has not expired", async () => {
