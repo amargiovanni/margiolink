@@ -3202,6 +3202,63 @@ git commit -m "feat(web): add the tags and settings pages"
 - Consumes: every page.
 - Produces: nothing new — this task hardens and proves what exists.
 
+- [ ] **Step 0: Seven items carried forward from earlier tasks**
+
+Each was found during an earlier review, judged real, and deliberately deferred
+to this task because it needs the whole application in view rather than one
+page. None is a licence to redesign; each is a decision to take with evidence.
+
+1. **The not-found page.** `App.tsx` has a `/*` catch-all rendering
+   `<Placeholder />`, which was correct while `/tags` and `/settings` were
+   unbuilt — turning it into a 404 then would have broken two live navigation
+   links. Task 13 finished those pages, so every entry in
+   `PrimaryNav.SECTIONS` now resolves and the catch-all is pure leftover: a
+   mistyped URL shows a development scaffold. Replace it, and delete
+   `Placeholder` if nothing else uses it.
+
+2. **A failed tags query is not announced.** The "Tag filter unavailable" note
+   on the links page is not a live region, so a mid-session load-to-error
+   transition changes the page silently for a screen-reader user. Judge whether
+   `role="status"` belongs there, and check every other panel that swaps to an
+   error state after a successful first render for the same gap.
+
+3. **`ChartFrame` with two series, in light mode.** §6.4 requires a legend
+   whenever there are two or more series, direct labels at four or fewer, and
+   treats a contrast WARN as obliging visible labels or a table view rather than
+   as dismissable. The overview and detail time series both draw clicks and
+   uniques. Task 11's reviewer flagged that it could not judge this from its own
+   diff because `ChartFrame` predates that task. Check it in both themes.
+
+4. **Route-level code splitting.** The main entry was measured at 643.97 kB raw
+   / 208.43 kB gzip, with every route inside it. The only chunk that splits is
+   the world atlas, and only because Task 8 was told to import it dynamically.
+   The two candidates are the link detail page, which pulls every chart
+   including the map for a reader who may only open the overview, and the login
+   screen, which is the one page an unauthenticated visitor sees and currently
+   arrives with the whole authenticated dashboard behind it.
+
+   **Measure before splitting, and split only where a real page's first paint
+   improves.** A dozen small chunks on an internal dashboard behind a login can
+   cost more in requests than they save in bytes. Reporting "measured, not worth
+   it" is a complete and acceptable answer.
+
+5. **The detail page has no edit, deactivate or delete control of its own.**
+   Every action lives in the links list's row menu, so a reader who has
+   navigated into a link must go back to change it. Judge whether that round
+   trip is acceptable. **Do not add them reflexively:** duplicating a
+   destructive action onto a second surface doubles the ground on which the
+   confirmation can be bypassed, and the list's menu is the tested path.
+
+6. **The bot-share tile carries a word but no icon.** §6.3's literal text asks
+   for both. The codebase's own `Badge` treats colour plus word as sufficient,
+   so there is a precedent either way. Decide once, for the whole application,
+   and make the two agree.
+
+7. **Stat tiles have no table view.** Every `ChartFrame` provides one; `StatTile`
+   does not, because it predates the rule. Judge whether a tile showing one
+   number and a sparkline needs one — the sparkline is the only part carrying
+   data a table could restate.
+
 - [ ] **Step 1: Write `web/src/a11y.test.tsx`**
 
 A cross-cutting sweep that renders each page against stubbed API responses and asserts the properties spec §6.2 commits to:
@@ -3230,10 +3287,15 @@ Fix the components, not the test. Report anything you fix.
 The palette in `tokens.css` must still be the one spec §6.3 recorded. Run, from the repository root:
 
 ```bash
-node "$DATAVIZ/scripts/validate_palette.js" \
+node /private/tmp/claude-501/bundled-skills/2.1.252/dc517f86f9702fe0c511ff649de8fb05/dataviz/scripts/validate_palette.js \
   "#3987e5,#d95926,#199e70,#c98500,#d55181,#008300,#9085e9,#e66767" \
   --mode dark --surface "#12100E"
 ```
+
+That path was confirmed to exist when this task was written. It lives in a
+temporary skill bundle, so if it has gone, find it with
+`find / -name validate_palette.js -path '*dataviz*'` and say in your report that
+it moved — do not skip the step and do not reason about the palette by hand.
 
 and the light equivalent with surface `#FAF7F2`. Paste both reports into your report. Both must pass; the light report's contrast WARN is expected and is discharged by the table view every `ChartFrame` provides.
 
@@ -3263,6 +3325,12 @@ npx wrangler dev
 ```
 
 Then, in a browser: sign in, create a link from the command palette, follow the short link in another tab, watch it appear in the live feed, open the link's detail page, switch a chart to its table view, toggle the theme, and walk the whole interface with the keyboard alone — no pointer.
+
+**If you have no browser automation available, say so plainly and stop at that
+point rather than describing what you believe would happen.** The controller has
+browser tooling and will drive this step. An invented walkthrough is worse than
+an absent one: it is the only step in this plan whose whole purpose is to test
+the thing no test can.
 
 Report what you did and what you saw. Capture a screenshot of the overview in both themes. **If any of it does not work, report it rather than fixing it silently** — a defect found here matters more than a tidy report.
 
