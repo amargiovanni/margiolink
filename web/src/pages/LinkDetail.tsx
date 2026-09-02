@@ -284,7 +284,7 @@ export default function LinkDetail() {
           <h3 id="qr-heading" className="mb-4 font-display text-lg leading-tight">
             QR code
           </h3>
-          <QrPanel linkId={linkId} slug={link.slug} />
+          <QrPanel linkId={linkId} slug={link.slug} shortUrl={link.shortUrl} />
         </section>
       </div>
     </div>

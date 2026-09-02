@@ -1,68 +1,74 @@
 import { useState } from "react";
+import { renderQrPixels } from "../../lib/qr";
 import { Button } from "../ui/Button";
 
-/** Drawn onto a canvas and exported at this resolution — large enough to
- *  survive being scaled up in print without looking pixelated. */
+/** The PNG is generated at this resolution — large enough to survive being
+ *  scaled up in print without looking pixelated. */
 const PNG_SIZE = 1024;
 
 export interface QrPanelProps {
   linkId: number;
   slug: string;
+  /** The link's full short URL (e.g. "https://link.margio.uk/demo"), used
+   *  to build the exact target the PNG encodes. Optional only so the
+   *  component still type-checks against a caller that has nothing but a
+   *  slug; falls back to this page's own origin, which is correct in
+   *  production since the dashboard and the redirector are the same
+   *  Worker on the same domain. */
+  shortUrl?: string;
 }
 
 /** The QR code for a link, with both an SVG and a PNG download.
  *
- * The endpoint at `src/routes/api/links.ts` builds its SVG with
- * `scalable: true`, which — per `qrcode-generator`'s own source — omits the
- * `width`/`height` attributes entirely and leaves only a `viewBox`. That is
- * fine for the `<img>` below (a viewBox alone is enough for a browser to lay
- * an image out), but it means the image's *intrinsic* size cannot be trusted
- * once it is drawn onto a `<canvas>`: several browsers report a 0×0 natural
- * size for such an SVG and draw nothing if the canvas dimensions are derived
- * from it. The PNG export below sets the canvas size and the `drawImage`
- * destination rectangle to fixed pixel values instead of reading anything off
- * the image.
+ * The two downloads are generated two different ways, deliberately:
+ *
+ * - The SVG download is a link straight to the existing API endpoint
+ *   (`src/routes/api/links.ts`), which serves a QR built with
+ *   `qrcode-generator`'s `scalable: true` — a `viewBox` with no `width`/
+ *   `height` attributes. That is fine for an `<img>`.
+ * - The PNG is **not** produced by loading that SVG into an `<img>` and
+ *   drawing it onto a canvas. An SVG with no intrinsic size is exactly the
+ *   case where that fails silently in several browsers — `img.naturalWidth`
+ *   comes back 0 and `drawImage` draws nothing. Instead, `renderQrPixels`
+ *   (`web/src/lib/qr.ts`) regenerates the QR code from scratch, directly
+ *   into a pixel buffer, using the same `qrcode-generator` module-grid API
+ *   the server uses — no SVG, no `<img>`, no intrinsic-size step to lose.
+ *   `qr.test.ts` decodes that exact buffer with a real QR decoder and
+ *   checks it against the URL it should encode, which an "element with the
+ *   right src exists" test cannot do.
  */
-export function QrPanel({ linkId, slug }: QrPanelProps) {
+export function QrPanel({ linkId, slug, shortUrl }: QrPanelProps) {
   const svgSrc = `/api/links/${linkId}/qr.svg`;
   const [pngError, setPngError] = useState(false);
 
-  async function handleDownloadPng() {
+  function handleDownloadPng() {
     setPngError(false);
-    let objectUrl: string | null = null;
     try {
-      const response = await fetch(svgSrc);
-      if (!response.ok) throw new Error("could not load the QR code");
-      const svgText = await response.text();
-
-      const image = new Image();
-      objectUrl = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml" }));
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error("the QR image failed to decode"));
-        image.src = objectUrl as string;
-      });
+      const base = shortUrl ?? `${window.location.origin}/${slug}`;
+      const targetUrl = `${base}?s=qr`;
+      const { data, width, height } = renderQrPixels(targetUrl, PNG_SIZE);
 
       const canvas = document.createElement("canvas");
-      canvas.width = PNG_SIZE;
-      canvas.height = PNG_SIZE;
+      canvas.width = width;
+      canvas.height = height;
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("this browser has no 2D canvas context");
-      ctx.drawImage(image, 0, 0, PNG_SIZE, PNG_SIZE);
+      ctx.putImageData(new ImageData(data, width, height), 0, 0);
 
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-      if (!blob) throw new Error("could not encode the PNG");
-
-      const downloadUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = downloadUrl;
-      anchor.download = `${slug}.png`;
-      anchor.click();
-      URL.revokeObjectURL(downloadUrl);
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          setPngError(true);
+          return;
+        }
+        const downloadUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = downloadUrl;
+        anchor.download = `${slug}.png`;
+        anchor.click();
+        URL.revokeObjectURL(downloadUrl);
+      }, "image/png");
     } catch {
       setPngError(true);
-    } finally {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     }
   }
 
