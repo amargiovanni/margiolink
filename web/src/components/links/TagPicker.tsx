@@ -43,8 +43,13 @@ function ExpandedTagPicker({ value, onChange, className }: TagPickerProps) {
   const tagsQuery = useTags();
 
   if (tagsQuery.isError) {
+    // `role="status"`, matching the Links page's tag filter (see the note
+    // there): a background refetch can fail after the picker already
+    // rendered its buttons successfully, and only a live region announces
+    // that swap to a screen-reader user who has moved on elsewhere in the
+    // form.
     return (
-      <p role="note" className="text-sm text-ink-faint">
+      <p role="status" className="text-sm text-ink-faint">
         Tags unavailable
       </p>
     );

@@ -322,8 +322,11 @@ describe("LinkDetail", () => {
     ];
 
     await waitFor(() => {
+      // level 2, not 3: ChartFrame's panel headings sit directly under this
+      // page's own h1 with nothing between (Task 14's a11y sweep) — see the
+      // comment on ChartFrame's heading element.
       const headings = screen
-        .getAllByRole("heading", { level: 3 })
+        .getAllByRole("heading", { level: 2 })
         .map((heading) => heading.textContent);
       const panelHeadings = headings.filter((text) => expectedOrder.includes(text ?? ""));
       expect(panelHeadings).toStrictEqual(expectedOrder);

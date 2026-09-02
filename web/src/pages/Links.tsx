@@ -137,8 +137,16 @@ export default function Links() {
           // there is nothing to filter by.
           <div className="flex flex-col gap-1">
             <span className="text-sm text-ink-muted">Tag</span>
+            {/* `role="status"` (not `"note"`): the tags query can fail on a
+                background refetch after the filter has already rendered
+                successfully once, and a plain `"note"` role carries no
+                implicit live region — the swap to "unavailable" would
+                change the page with nothing announced to a screen-reader
+                user who isn't looking at it. `"status"` is polite rather
+                than `"alert"`'s assertive, matching a degraded-but-usable
+                filter rather than a failed request. */}
             <p
-              role="note"
+              role="status"
               className="rounded border border-dashed border-rule px-3 py-2 text-sm text-ink-faint"
             >
               Tag filter unavailable

@@ -2,6 +2,17 @@ import { ArrowDownRight, ArrowRight, ArrowUpRight } from "lucide-react";
 import { formatCount, formatDelta } from "../../lib/format";
 import { Sparkline } from "./Sparkline";
 
+/** No table view (Task 14, spec §6.4's rule): the number itself is already
+ *  plain accessible text (the `<output>` below), and the one piece of data a
+ *  table could add anything to is the optional `spark` trend — but every
+ *  caller that passes one (`Overview`'s Clicks and Unique visitors tiles)
+ *  derives it from the exact same buckets already tabulated in that page's
+ *  "Clicks over time" `ChartFrame`, a few rows down on the same page. A
+ *  table here would restate data the reader already has a table for.
+ *  `LinkDetail`'s stat tiles pass no `spark` at all, so for them the
+ *  question doesn't arise. If a future tile ever gets a `spark` with no
+ *  such twin elsewhere on the page, that tile is the one that needs the
+ *  table, not every `StatTile`. */
 export function StatTile({
   label,
   value,

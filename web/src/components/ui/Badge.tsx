@@ -18,7 +18,18 @@ const TONE_CLASSES: Record<BadgeTone, string> = {
 
 /** A status tone is never the only signal — every caller pairs it with a
  *  word (the children), never a bare dot, which is what keeps this
- *  accessible to anyone who cannot distinguish the colours. */
+ *  accessible to anyone who cannot distinguish the colours.
+ *
+ *  Decided once, app-wide (Task 14): colour plus word is sufficient: no
+ *  icon requirement. §6.3's literal text asks for "an icon and a label",
+ *  but this component has shipped colour+word without one since Task 9
+ *  (`LinkRow`'s "Inactive" badge) and passed every review since. Retrofitting
+ *  icons here — and onto `BotShareTile`'s "high" bot-share flag, which
+ *  already follows the same colour+word pattern deliberately, see its own
+ *  comment — would be a cosmetic pass with no accessibility gain the word
+ *  alone doesn't already close, so the two are left to agree on the
+ *  established, already-reviewed convention rather than the spec's
+ *  unimplemented literal text. */
 export function Badge({ tone = "neutral", children, className }: BadgeProps) {
   return (
     <span

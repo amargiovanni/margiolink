@@ -10,9 +10,9 @@ It shortens links, redirects visitors in a few milliseconds, and records enough
 about each click to answer real questions — which country, which device, which
 channel, what time of day — without ever writing down who the visitor was.
 
-> **Status:** the backend is complete and covered by 317 tests. The dashboard is
-> the next piece of work; today the API is driven with `curl` or your own client.
-> See [Roadmap](#roadmap).
+> **Status:** the backend and the dashboard are both complete, covered by 640
+> tests — 350 inside `workerd` against real D1, 290 in a browser (jsdom)
+> environment. Sign in at `/app`. See [Roadmap](#roadmap).
 
 ---
 
@@ -22,6 +22,7 @@ channel, what time of day — without ever writing down who the visitor was.
 - [What it does](#what-it-does)
 - [How the privacy design works](#how-the-privacy-design-works)
 - [Architecture](#architecture)
+- [The dashboard](#the-dashboard)
 - [Running it locally](#running-it-locally)
 - [Deploying your own](#deploying-your-own)
 - [Configuration](#configuration)
@@ -138,6 +139,7 @@ One Worker, three surfaces:
 | --- | --- | --- |
 | `/:slug` | Public redirect — the hot path | none |
 | `/api/*` | JSON API, 21 routes | session cookie |
+| `/app`, `/app/*` | The dashboard shell (a single-page app; routing past that point is client-side) | session cookie, checked client-side |
 | `/privacy`, `/robots.txt`, `/.well-known/security.txt`, `/_health` | Public | none |
 
 **The redirect answers before the database is touched.** It resolves the slug,
@@ -178,6 +180,35 @@ src/
 └── cron/                 rollup.ts, retention.ts
 ```
 
+## The dashboard
+
+A responsive React single-page app, served by the same Worker at `/app` — no
+separate host, no separate deploy, and no third-party request: type,
+self-hosted fonts and the map's own topology data all ship in the build. It is
+built by `npm run build:web` (Vite) into `web/dist`, which the Worker serves
+through its `ASSETS` binding; `/app` and `/app/*` both resolve to the app
+shell, and the SPA's own router takes it from there.
+
+- **Overview** — the KPI row (clicks, unique visitors, countries reached, bot
+  share), each with a sparkline and a delta against the preceding period; the
+  time-series chart with adaptive granularity; top links; a world map; device
+  breakdown.
+- **Links** — the working list, with instant search, status and tag filters, a
+  7-day sparkline per row, and one-tap copy. `⌘K` opens a command palette to
+  create a link from anywhere in the app.
+- **Link detail** — every collected dimension as a ranked, proportional-bar
+  list (countries with flags, cities, browsers, operating systems, referrers,
+  UTM campaigns, and more), an hour-by-weekday heatmap, a live click feed, the
+  QR code (downloadable as SVG or PNG, with scans counted separately from
+  clicks), and the outcome breakdown.
+- **Tags** and **Settings** — tag management; active sessions with
+  revocation; the retention window shown read-only, straight from
+  `RAW_RETENTION_DAYS`; and a CSV export that streams straight to the browser.
+
+Built to WCAG 2.2 AA: keyboard-operable throughout, focus always visible, no
+chart conveys information by colour alone, and every chart ships a table view
+as well as a plot.
+
 ## Running it locally
 
 **Requirements:** Node 24 (see `.nvmrc`) and npm. No Cloudflare account needed
@@ -196,7 +227,20 @@ npm run db:migrate:local
 npm run dev
 ```
 
-The Worker comes up on `http://localhost:8787`. Try it:
+The Worker comes up on `http://localhost:8787`, serving the API and whatever
+`web/dist` currently holds — run `npm run build:web` once beforehand, or the
+dashboard shell has nothing to serve. Open `http://localhost:8787/app` and
+sign in with the `ADMIN_USER`/`ADMIN_PASSWORD` from `.dev.vars`; rebuild with
+`npm run build:web` after a dashboard change and reload.
+
+`npm run dev:web` runs Vite's own dev server for fast markup/style iteration
+with hot reload, on its own port — the API client fetches same-origin
+(`credentials: "same-origin"` in `web/src/lib/api.ts`), and nothing proxies
+`/api/*` from that port to the Worker, so it is for layout and component work
+against stubbed data, not for exercising the real API end to end. `npm run
+deploy` runs `build:web` automatically before deploying.
+
+Or drive the API directly:
 
 ```bash
 # Log in and keep the session cookie
@@ -440,17 +484,23 @@ than silently eating history.
 ## Development
 
 ```bash
-npm test                    # 317 tests, inside workerd against real D1
+npm test                    # 640 tests: 350 inside workerd against real D1, 290 in jsdom
 npm run test:watch
 npm run check               # Biome: lint and format
 npm run check:fix
-npm run typecheck           # tsc --noEmit
+npm run typecheck           # tsc --noEmit (backend and dashboard both)
+npm run build:web           # builds the dashboard into web/dist
+npm run dev:web             # Vite dev server for the dashboard — see "The dashboard" above
 npm run db:verify-rollback  # proves the newest migration is reversible
 ```
 
-Tests never mock the database. They run inside `workerd` with a real local D1,
-so every SQL statement is executed by SQLite — a query that would fail in
-production fails here.
+Backend tests never mock the database. They run inside `workerd` with a real
+local D1, so every SQL statement is executed by SQLite — a query that would
+fail in production fails here. Dashboard tests render each page against a
+stubbed API and include a cross-cutting accessibility sweep
+(`web/src/a11y.test.tsx`) over every page: one `<h1>`, no skipped heading
+level, every image, form control and button named, no positive `tabIndex`,
+and every chart inside a named region.
 
 CI runs lint, types and the full suite on every pull request, plus a separate
 job that applies the migrations, rolls the newest one back, and checks the
@@ -482,10 +532,16 @@ substitute for it.
 
 ## Roadmap
 
-The backend is done. Next is the dashboard: a responsive interface for creating
-links and reading the analytics, built against the API above. Two known pieces
-of work belong to it — serving ranges older than the retention window from the
-aggregate tables, and labelling summed unique counts honestly.
+The backend and the dashboard are both done. Two known pieces of work remain,
+both already documented where a consumer of the affected figure will see them
+rather than only here:
+
+- **Ranges older than `RAW_RETENTION_DAYS` under-report.** The statistics
+  endpoints read raw click rows; serving older ranges from the aggregate
+  tables (`click_daily`, `click_daily_dim`) instead is not yet built.
+- **Summed unique counts across days are deliberately imprecise**, for the
+  reason in [How the privacy design works](#how-the-privacy-design-works) — a
+  returning visitor is counted once per day, by design, not by omission.
 
 ## Contributing, security, licence
 

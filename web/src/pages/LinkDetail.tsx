@@ -150,6 +150,13 @@ export default function LinkDetail() {
 
   const { link } = linkQuery.data;
 
+  // Task 14, Step 0 item 5: deliberately no edit/deactivate/delete control
+  // on this page. Every one of those already lives in the links list's row
+  // menu (`LinkRow`), which is the one tested path for each — Delete in
+  // particular goes through `ConfirmDialog`. Putting a second copy here
+  // would double the surface a reader has to get past that confirmation on,
+  // for a "go back to change it" round trip that costs one navigation on a
+  // dashboard, not a reason to duplicate a destructive control.
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -281,9 +288,13 @@ export default function LinkDetail() {
           aria-labelledby="live-feed-heading"
           className="rounded-lg border border-rule bg-surface-raised p-4"
         >
-          <h3 id="live-feed-heading" className="mb-4 font-display text-lg leading-tight">
+          {/* h2, matching ChartFrame's own headings — see the comment there.
+              This section sits as a sibling of the ChartFrame panels above
+              it, at the same level under the page's h1, not nested under
+              one of them. */}
+          <h2 id="live-feed-heading" className="mb-4 font-display text-lg leading-tight">
             Live feed
-          </h3>
+          </h2>
           <LiveFeed linkId={linkId} />
         </section>
 
@@ -291,9 +302,9 @@ export default function LinkDetail() {
           aria-labelledby="qr-heading"
           className="rounded-lg border border-rule bg-surface-raised p-4"
         >
-          <h3 id="qr-heading" className="mb-4 font-display text-lg leading-tight">
+          <h2 id="qr-heading" className="mb-4 font-display text-lg leading-tight">
             QR code
-          </h3>
+          </h2>
           <QrPanel linkId={linkId} slug={link.slug} shortUrl={link.shortUrl} />
         </section>
       </div>

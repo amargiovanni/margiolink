@@ -29,9 +29,14 @@ export function ChartFrame({
     >
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 id={headingId} className="font-display text-lg leading-tight">
+          {/* h2, not h3: every page that uses ChartFrame (Overview,
+              LinkDetail) puts its panels directly under the page's own h1
+              with nothing between — Settings is the only page with real
+              subsections, and its own headings are h2. An h3 here would
+              skip a level on every page that has no h2 to land under. */}
+          <h2 id={headingId} className="font-display text-lg leading-tight">
             {title}
-          </h3>
+          </h2>
           {description ? <p className="mt-1 text-sm text-ink-muted">{description}</p> : null}
         </div>
 
