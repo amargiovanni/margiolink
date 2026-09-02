@@ -27,7 +27,16 @@
   "triggers": {
     "crons": ["0 * * * *", "30 3 * * *"]
   },
+  // A custom domain, not a plain route. A route matches traffic for a
+  // hostname that must already resolve — and `link.margio.uk` had no DNS
+  // record at all, so the first deploy attached a route to a name nothing
+  // could reach. A custom domain makes wrangler create and own the DNS
+  // record and the certificate, so the hostname is part of the deployment
+  // rather than a manual dashboard step somebody has to remember.
+  //
+  // Note the pattern carries no `/*`: a custom domain is the whole
+  // hostname, and every path under it reaches this Worker.
   "routes": [
-    { "pattern": "link.margio.uk/*", "zone_name": "margio.uk" }
+    { "pattern": "link.margio.uk", "custom_domain": true }
   ]
 }
