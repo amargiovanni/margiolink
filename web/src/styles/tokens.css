@@ -10,7 +10,11 @@
   --color-rule: #2c2823;
   --color-ink: #f6f2ea;
   --color-ink-muted: #a8a094;
-  --color-ink-faint: #6f675c;
+  /* Was #6f675c (3.20:1 on #1a1714 surface-raised) — below WCAG AA's 4.5:1
+     for normal text. Found the same way as the light-mode ink-faint fix
+     below: e2e/a11y.spec.ts (Task 15) running real axe-core against a real
+     Chromium, which a cascade-blind jsdom test cannot do. */
+  --color-ink-faint: #8f877c; /* 5.04:1 on #1a1714, 5.36:1 on #12100e, 5.57:1 on #0c0a09 */
 
   --color-accent: #d89b2e;
   --color-accent-ink: #12100e;
@@ -54,7 +58,15 @@
     --color-rule: #ddd6c9;
     --color-ink: #1b1814;
     --color-ink-muted: #5f574c;
-    --color-ink-faint: #8c8479;
+    /* Was #8c8479 (3.68:1 on #ffffff, 3.45:1 on #faf7f2) — below WCAG AA's
+       4.5:1 for normal text. Discovered by e2e/a11y.spec.ts (Task 15)
+       running real axe-core against a real Chromium: the tokens.test.ts
+       validator below only pins hex values, it never measures a contrast
+       ratio, so nothing caught this until a real browser rendered the
+       actual text. Same "stepped independently, not inherited" fix as
+       good/warning/critical (4286bc1) — just a token that test happened
+       not to cover. */
+    --color-ink-faint: #756e63; /* 5.04:1 on #ffffff, 4.72:1 on #faf7f2 */
     --color-accent: #8a5e12;
     --color-accent-ink: #ffffff;
     --color-series-1: #2a78d6;
@@ -93,7 +105,8 @@
   --color-rule: #ddd6c9;
   --color-ink: #1b1814;
   --color-ink-muted: #5f574c;
-  --color-ink-faint: #8c8479;
+  /* See the comment beside this in the @media block above. */
+  --color-ink-faint: #756e63; /* 5.04:1 on #ffffff, 4.72:1 on #faf7f2 */
   --color-accent: #8a5e12;
   --color-accent-ink: #ffffff;
   --color-series-1: #2a78d6;
