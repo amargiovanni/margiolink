@@ -2873,12 +2873,44 @@ git commit -m "feat(web): add link creation, editing and the command palette"
 
 **Files:**
 - Create: `web/src/pages/LinkDetail.tsx`, `web/src/components/links/QrPanel.tsx`, `web/src/components/charts/LiveFeed.tsx`
-- Modify: `web/src/App.tsx`
-- Test: `web/src/pages/LinkDetail.test.tsx`, `web/src/components/links/QrPanel.test.tsx`
+- Modify: `web/src/App.tsx`, `web/src/lib/queries.ts`, `src/db/clicks.ts`, `src/routes/api/stats.ts`
+- Test: `web/src/pages/LinkDetail.test.tsx`, `web/src/components/links/QrPanel.test.tsx`, `test/routes/stats-api.test.ts`
 
 **Interfaces:**
 - Consumes: every chart from Tasks 5 to 8; `useLink`, `useSummary`, `useTimeseries`, `useDimension`, `useLive`.
 - Produces: the `/links/:id` route.
+
+**Step 0 comes first, and without it this task cannot be correct.** The four
+stats hooks in `web/src/lib/queries.ts` take a range and no link, so a detail
+page built on them as they stand would show every link's numbers under one
+link's name — a page that lies rather than one that is merely incomplete.
+
+Three of the four API routes already accept an optional `linkId` (`rangeSchema`
+in `src/routes/api/stats.ts` declares it and passes it straight through to the
+db layer), so for `summary`, `timeseries` and `dimension` only the client is
+missing. `/live` is the exception: it takes a limit and nothing else, and
+`recentClicks` has no link filter at all.
+
+- [ ] **Step 0: Scope the stats to one link, end to end**
+
+Give `recentClicks(db, limit, linkId?)` an optional link filter — a `WHERE
+c.link_id = ?` when one is supplied, the current unfiltered query when it is
+not. Give `/live` the same optional `linkId` the other three routes already
+accept, parsed the same way.
+
+Then thread an optional `linkId` through `useSummary`, `useTimeseries`,
+`useDimension` and `useLive`. **It must be part of each query key**, or the
+detail page will serve one link's numbers out of the cache for another.
+
+Do not filter the global live feed on the client instead. The feed returns the
+50 most recent clicks across all links, so a link outside that window would
+render as "no recent activity" while it is in fact being clicked — a false
+statement, not a missing one.
+
+Worker tests in `test/routes/stats-api.test.ts`: each of the four routes, given two
+links with clicks, returns only the requested link's rows when `linkId` is
+supplied and both links' rows when it is not. Write them so they fail if the
+filter is dropped.
 
 This is the "ricchissima" screen spec §6.1 describes: every dimension the API exposes, as a ranked list with proportional bars, plus the heatmap, the live feed, the QR code and the outcome breakdown.
 
