@@ -3346,3 +3346,205 @@ Report what you did and what you saw. Capture a screenshot of the overview in bo
 git add -A
 git commit -m "docs: describe the dashboard and record the accessibility sweep"
 ```
+
+---
+
+## Task 15: End-to-end tests in CI
+
+**Files:**
+- Create: `e2e/playwright.config.ts`, `e2e/fixtures.ts`, `e2e/seed.ts`, `e2e/auth.spec.ts`, `e2e/keyboard.spec.ts`, `e2e/artefacts.spec.ts`, `e2e/a11y.spec.ts`
+- Modify: `package.json`, `.github/workflows/ci.yml`, `.gitignore`, `README.md`, `CONTRIBUTING.md`
+
+**Interfaces:**
+- Consumes: the built Worker, served by `wrangler dev`.
+- Produces: `npm run e2e`, and a CI job that runs it on every pull request.
+
+**Why this task exists, in one sentence:** every serious defect that reached a
+review on this branch was invisible to 600 passing tests and visible in a
+browser in seconds.
+
+That is not an accident. `jsdom` has no CSS cascade, no layout, no real focus
+model, no canvas, and no navigation. So it cannot see a focus ring that never
+renders, a redirect that loops, a PNG that comes out blank, or a colour that
+fails contrast. Task 14's Step 6 asked a human to check those by hand once —
+which proves nothing about tomorrow. This task replaces that step with
+something a pull request has to pass.
+
+**Every scenario below is derived from a defect this branch actually shipped.**
+None is hypothetical, and each names the commit that fixed it so a future reader
+can see why the test exists.
+
+- [ ] **Step 1: Install and configure**
+
+Add `@playwright/test` and `@axe-core/playwright` as devDependencies, and add
+`"e2e": "playwright test"` plus `"e2e:ui": "playwright test --ui"` to the
+scripts.
+
+`e2e/playwright.config.ts` uses Playwright's `webServer` to build the dashboard
+and start the Worker, and waits for it before running:
+
+```ts
+webServer: {
+  command: "npm run build:web && npx wrangler dev --port 8787 --local",
+  url: "http://localhost:8787/_health",
+  reuseExistingServer: !process.env.CI,
+  timeout: 120_000,
+}
+```
+
+Use `chromium` only. A second engine doubles CI time for this suite and none of
+the defects it covers were engine-specific; say so in a comment so the choice
+reads as a decision rather than an oversight.
+
+Set `trace: "retain-on-failure"` and `video: "retain-on-failure"`. When this
+suite catches something, the person reading the CI log needs to see it.
+
+Add `e2e/.artifacts/`, `test-results/` and `playwright-report/` to `.gitignore`.
+
+- [ ] **Step 2: Deterministic credentials and seed data**
+
+The suite must never depend on a developer's real `.dev.vars`, and CI has no
+secrets for it. `e2e/seed.ts` and the CI job both use fixed values:
+
+```
+ADMIN_USER=e2e
+ADMIN_PASSWORD=e2e-password-not-a-secret
+HASH_SECRET=e2e-hash-secret-not-a-secret
+```
+
+CI writes those into `.dev.vars` before starting the server. State in a comment
+that these are test values with no production meaning — a reader who finds a
+password in a workflow file should be able to tell in one line whether to panic.
+
+`e2e/seed.ts` creates, through the real API rather than by touching the
+database: two links (one with a title that begins `=1+1`, one soft-deleted), a
+tag, and enough clicks across several days and countries that the overview,
+the map and the heatmap all have something to draw. An empty dashboard proves
+almost nothing — every panel renders its empty state and no chart is exercised.
+
+- [ ] **Step 3: `e2e/auth.spec.ts` — the navigation defects**
+
+Fixed in `2236979`. `BrowserRouter basename="/app"` prepends `/app` itself, and
+two call sites passed targets that already carried it, producing `/app/app/...`,
+which matched no route. 599 tests were green because every test file mounted a
+router **without** a basename.
+
+- Signing in lands on the overview, and the URL is exactly `/app`.
+- Visiting `/app/links` with no session redirects to `/app/login` — **once**.
+  Assert the final URL and that the page shows the sign-in form, and fail if the
+  browser recorded more than a couple of navigations: the original bug was an
+  infinite loop, and a test that only checks the final state could pass while
+  the browser spun.
+- Signing out returns to `/app/login`.
+- A mistyped path such as `/app/lnks` shows the not-found page, not a
+  development placeholder.
+
+- [ ] **Step 4: `e2e/keyboard.spec.ts` — the focus defects**
+
+Fixed in `acb7738`. The period picker's focus ring could never render: the
+`peer-focus-visible:` classes sat on the input's **parent**, and that variant
+compiles to a sibling combinator. No test in the suite could see it.
+
+- Tab to each period option and assert `outline-width` on the focused control's
+  styled box is not `0px` and its `outline-color` is not transparent, read from
+  `getComputedStyle`. This is the assertion the old suite structurally could not
+  make.
+- Reach and operate the command palette, the create-link dialog and the delete
+  confirmation using the keyboard alone — no `page.click`. Assert the delete
+  confirmation takes focus on **Cancel**, that `Escape` dismisses it, and that
+  the mutation did not fire.
+- Walk the primary navigation with `Tab` and assert focus never leaves the
+  document and never lands on something with no accessible name.
+
+- [ ] **Step 5: `e2e/artefacts.spec.ts` — the files we hand to people**
+
+Fixed in `ebe93a8` and `b34c31d`. The QR PNG encoded a different URL than the
+server's SVG, so a scan of a printed code would never have counted as a scan;
+and the CSV export was open to formula injection.
+
+- Download the QR PNG, decode it with `jsqr` (already a devDependency), and
+  assert it decodes to the short URL **including** the `?s=qr` marker. This is
+  the one assertion that catches a QR which renders perfectly and encodes the
+  wrong thing, and it needs a real canvas — which is exactly why jsdom could
+  not make it.
+- Download the SVG and assert it encodes the same target as the PNG. Two codes
+  for one link is the defect that was there.
+- Download the CSV and assert the row for the `=1+1` link is neutralised, that
+  the file opens with a UTF-8 BOM, and that a non-ASCII title survives intact.
+
+- [ ] **Step 6: `e2e/a11y.spec.ts` — the contract, checked by a machine**
+
+Run `@axe-core/playwright` against every page, in **both themes**, and fail on
+any violation at `serious` or `critical`. Light mode is not optional: the
+contrast defect Task 9 fixed existed only there, because the light values had
+been inherited from dark rather than stepped independently.
+
+Assert, per page, the properties §6.2 commits to that axe does not check: one
+`<h1>`, heading levels that never skip, and every chart inside a region with an
+accessible name.
+
+Where a violation is a deliberate, documented choice rather than a defect,
+suppress it **by rule and by selector with a comment naming the reason** — never
+by lowering the threshold. A blanket exclusion is how this kind of suite quietly
+stops meaning anything.
+
+- [ ] **Step 7: The CI job**
+
+Add an `e2e` job to `.github/workflows/ci.yml`, parallel to `verify`:
+
+```yaml
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # Test-only values. They have no production meaning and unlock nothing:
+      # the suite runs against a throwaway local D1 inside the runner.
+      - name: Write test credentials
+        run: |
+          printf 'ADMIN_USER=e2e
+ADMIN_PASSWORD=e2e-password-not-a-secret
+HASH_SECRET=e2e-hash-secret-not-a-secret
+' > .dev.vars
+      - run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+```
+
+The report upload on failure is the point of the job: a red end-to-end run that
+a reader cannot see inside is a red run they will learn to ignore.
+
+- [ ] **Step 8: Prove the suite can fail**
+
+A suite that has never failed is a suite nobody has tested. For **each** of the
+four specs, reintroduce the defect it was written for — restore the doubled
+`/app`, put back `peer-focus-visible:`, strip the `?s=qr` marker from the PNG's
+target, remove the CSV neutralisation — run that spec, paste the verbatim
+failure, then revert.
+
+Four reverts, four green runs. Anything that does not fail when its defect
+returns is not protecting us and must be rewritten until it does.
+
+- [ ] **Step 9: Document it**
+
+`README.md` and `CONTRIBUTING.md`: how to run the suite locally, that it needs
+`npx playwright install chromium` once, and — briefly — why it exists, so the
+next contributor understands it covers what `jsdom` structurally cannot rather
+than duplicating the unit tests.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add -A
+git commit -m "test(e2e): cover in a browser what jsdom cannot reach"
+```
