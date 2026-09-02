@@ -269,9 +269,23 @@ describe("GET /api/stats/top-links", () => {
     expect(body.links[1]).toMatchObject({ id: otherLinkId, clicks: 1 });
   });
 
-  it("excludes clicks outside the window", async () => {
+  it("excludes clicks before the window", async () => {
     await insertClickFor(linkId, BASE + 1);
     await insertClickFor(linkId, BASE - DAY); // before the window
+
+    const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`);
+    const body = (await res.json()) as { links: { id: number; clicks: number }[] };
+    expect(body.links).toStrictEqual([expect.objectContaining({ id: linkId, clicks: 1 })]);
+  });
+
+  it("excludes clicks at or after the window's upper bound", async () => {
+    // The window is half-open ([from, to)): a click landing exactly on `to`
+    // belongs to the *next* window, not this one. An off-by-one that made
+    // the upper bound inclusive would double-count that instant across two
+    // adjacent periods.
+    await insertClickFor(linkId, BASE + 1);
+    await insertClickFor(linkId, BASE + DAY); // exactly at `to`
+    await insertClickFor(linkId, BASE + DAY + 1); // after `to`
 
     const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`);
     const body = (await res.json()) as { links: { id: number; clicks: number }[] };
@@ -339,6 +353,24 @@ describe("GET /api/stats/top-links", () => {
   it("caps the limit", async () => {
     const res = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}&limit=99999`);
     expect(res.status).toBe(400);
+  });
+
+  it("ignores linkId — the ranking is always across every link", async () => {
+    // linkId has no meaning for a cross-link ranking; a caller who passes
+    // it must not get a per-link result that looks honoured but silently
+    // isn't. Same request with and without linkId must return the same
+    // ranking.
+    await insertClickFor(linkId, BASE + 1);
+    await insertClickFor(otherLinkId, BASE + 2);
+    await insertClickFor(otherLinkId, BASE + 3);
+
+    const withLinkId = await api(
+      `/api/stats/top-links?from=${BASE}&to=${BASE + DAY}&linkId=${linkId}`,
+    );
+    const withoutLinkId = await api(`/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`);
+
+    expect(withLinkId.status).toBe(200);
+    expect(await withLinkId.json()).toStrictEqual(await withoutLinkId.json());
   });
 });
 

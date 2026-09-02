@@ -7,12 +7,22 @@ import { PERIODS, type PeriodId } from "../lib/ranges";
  *  reasoning `TimeSeries`' slider spells out for its own interaction, just
  *  handed to native semantics here instead of ARIA ones.
  *
- *  Each input is visually hidden (`peer sr-only`) rather than styled
- *  directly: a checked native radio dot fighting a segmented-control look
- *  is a losing battle, and hiding it entirely would also hide its focus
- *  ring, so the ring is redrawn on the label via `peer-focus-visible`
- *  instead of relying on the global `:focus-visible` rule landing on an
- *  invisible element. */
+ *  Each input is visually hidden (`sr-only`) rather than styled directly: a
+ *  checked native radio dot fighting a segmented-control look is a losing
+ *  battle, and hiding it entirely would also hide its focus ring, so the
+ *  ring is redrawn on the label instead of relying on the global
+ *  `:focus-visible` rule landing on an invisible element.
+ *
+ *  That redraw uses `has-[:focus-visible]:*` on the `<label>`, not
+ *  `peer-focus-visible:*`: the input is the label's *child*, not its
+ *  sibling, and Tailwind's `peer-*` variant compiles to a general sibling
+ *  combinator (`~`), which cannot select a parent from a descendant no
+ *  matter how the classes are arranged — the rule would simply never match.
+ *  `:has()` is the one selector relationship that runs the other way.
+ *  `focus-within` was deliberately not used either: it fires on a plain
+ *  pointer click as well as a keyboard focus, defeating the entire reason
+ *  `:focus-visible` exists — a ring that appears on every click is exactly
+ *  the visual noise `:focus-visible` was added to remove. */
 export function PeriodPicker({
   value,
   onChange,
@@ -31,7 +41,7 @@ export function PeriodPicker({
         return (
           <label
             key={period.id}
-            className={`cursor-pointer rounded px-3 py-1.5 text-sm transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent ${
+            className={`cursor-pointer rounded px-3 py-1.5 text-sm transition-colors has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent ${
               checked ? "bg-accent text-accent-ink" : "text-ink-muted hover:text-ink"
             }`}
           >
@@ -41,7 +51,7 @@ export function PeriodPicker({
               value={period.id}
               checked={checked}
               onChange={() => onChange(period.id)}
-              className="peer sr-only"
+              className="sr-only"
             />
             {period.label}
           </label>

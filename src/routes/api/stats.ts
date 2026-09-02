@@ -49,6 +49,19 @@ const rangeSchema = z
   })
   .refine((value) => value.from < value.to, { message: "from must be before to" });
 
+/** `/top-links` ranks *across* links, so `linkId` has no meaning here — this
+ *  schema simply has no field for it, rather than accepting-and-ignoring it
+ *  through the shared `rangeSchema`. A parameter this route cannot honour
+ *  should not appear to be part of its contract; a caller who sends
+ *  `linkId` gets the same whole-account ranking as one who doesn't, instead
+ *  of an unhonoured hint of a per-link one. */
+const topLinksRangeSchema = z
+  .object({
+    from: z.coerce.number().int().nonnegative(),
+    to: z.coerce.number().int().positive(),
+  })
+  .refine((value) => value.from < value.to, { message: "from must be before to" });
+
 const dimensionNames = Object.keys(DIMENSION_COLUMNS) as [DimensionName, ...DimensionName[]];
 
 export const stats = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
@@ -103,7 +116,7 @@ stats.get("/dimension", async (c) => {
 });
 
 stats.get("/top-links", async (c) => {
-  const parsed = rangeSchema.safeParse(c.req.query());
+  const parsed = topLinksRangeSchema.safeParse(c.req.query());
   if (!parsed.success) return c.json({ error: "invalid_range" }, 400);
 
   const limit = z.coerce
