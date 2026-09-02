@@ -1,6 +1,6 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { MoreHorizontal, Pencil, Power, QrCode, RotateCcw, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link as RouterLink, useNavigate } from "react-router";
 import { hexToRgb, readableTextColor } from "../../lib/contrast";
 import { formatCount } from "../../lib/format";
@@ -37,6 +37,13 @@ function TagBadge({ tag }: { tag: Tag }) {
 
 const MENU_ITEM_CLASSNAME =
   "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-ink outline-none data-[highlighted]:bg-surface-sunken";
+
+/** Restore has no confirmation to hold its error the way Delete's does —
+ *  it is a single-click, no-dialog action, matching Deactivate/Activate's
+ *  own precedent for a reversible one. A failure still has to be said
+ *  somewhere, so it surfaces as a toast (same idiom as `LinkDialog`'s own
+ *  copy-confirmation toast) rather than nowhere at all. */
+const RESTORE_ERROR_TOAST_MS = 4000;
 
 export interface LinkRowProps {
   link: Link;
@@ -79,9 +86,23 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const restoreErrorTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => () => clearTimeout(restoreErrorTimer.current), []);
 
   function handleToggleActive() {
     updateMutation.mutate({ id: link.id, isActive: !link.isActive });
+  }
+
+  function handleRestore() {
+    restoreMutation.mutate(link.id, {
+      onError: () => {
+        setRestoreError(`Could not restore ${link.slug}. Try again.`);
+        clearTimeout(restoreErrorTimer.current);
+        restoreErrorTimer.current = setTimeout(() => setRestoreError(null), RESTORE_ERROR_TOAST_MS);
+      },
+    });
   }
 
   function handleOpenDelete() {
@@ -152,10 +173,7 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
                 // back: restoring it. Edit, QR code, Deactivate and Delete
                 // all assume a link that still resolves, so none of them
                 // belong on a row that no longer does.
-                <DropdownMenu.Item
-                  onSelect={() => restoreMutation.mutate(link.id)}
-                  className={MENU_ITEM_CLASSNAME}
-                >
+                <DropdownMenu.Item onSelect={handleRestore} className={MENU_ITEM_CLASSNAME}>
                   <RotateCcw className="size-4" aria-hidden="true" />
                   Restore
                 </DropdownMenu.Item>
@@ -205,6 +223,15 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
         error={deleteError}
         onConfirm={handleConfirmDelete}
       />
+
+      {restoreError && (
+        <div
+          role="alert"
+          className="fixed right-4 bottom-4 z-50 max-w-sm rounded-lg border border-critical/40 bg-critical/10 px-4 py-3 text-sm text-critical shadow-lg"
+        >
+          {restoreError}
+        </div>
+      )}
     </div>
   );
 }

@@ -257,6 +257,24 @@ describe("LinkRow", () => {
     });
   });
 
+  it("surfaces a failed restore rather than showing nothing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const path = new URL(String(input), "https://link.test").pathname;
+        if (path === "/api/tags") return Response.json({ tags: [] });
+        if (path === "/api/links/1/restore")
+          return Response.json({ error: "boom" }, { status: 500 });
+        return Response.json({ ok: true });
+      }),
+    );
+    renderRow([], { ...LINK, deletedAt: 1_800_000_500 });
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /restore/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not restore launch/i);
+  });
+
   it("surfaces a failed delete rather than showing nothing", async () => {
     vi.stubGlobal(
       "fetch",
