@@ -176,10 +176,20 @@ export default function Links() {
       ) : linksQuery.isPending ? (
         <p className="text-sm text-ink-muted">Loading links…</p>
       ) : links.length === 0 ? (
-        <EmptyState
-          title="No links yet"
-          description="Use New link above to create your first short link."
-        />
+        // The Deleted filter's own empty state is never "create your
+        // first link" — there may be many links, none of them deleted,
+        // and offering to create one is a non-sequitur in that context.
+        status === "deleted" ? (
+          <EmptyState
+            title="No deleted links"
+            description="Links you delete stay here, with a way to restore them."
+          />
+        ) : (
+          <EmptyState
+            title="No links yet"
+            description="Use New link above to create your first short link."
+          />
+        )
       ) : (
         <div className="flex flex-col">
           {links.map((link) => (

@@ -187,6 +187,40 @@ describe("Links", () => {
     expect(screen.getAllByText("Deleted").length).toBeGreaterThan(0);
   });
 
+  it("says there are no deleted links, not that there are no links at all, when the Deleted filter is empty", async () => {
+    stub({
+      "/api/links": LINKS,
+      "/api/tags": { tags: [] },
+      "/api/stats/sparklines": { days: 7, series: {} },
+    });
+    renderLinks();
+    await screen.findByText("launch");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = new URL(String(input), "https://link.test");
+        if (url.pathname === "/api/links" && url.searchParams.get("status") === "deleted") {
+          return Response.json({ links: [], total: 0 });
+        }
+        if (url.pathname === "/api/links") return Response.json(LINKS);
+        if (url.pathname === "/api/tags") return Response.json({ tags: [] });
+        if (url.pathname === "/api/stats/sparklines") return Response.json({ days: 7, series: {} });
+        return Response.json({ error: "not_found" }, { status: 404 });
+      }),
+    );
+
+    await userEvent.click(screen.getByRole("combobox", { name: /^status$/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Deleted" }));
+
+    expect(await screen.findByText(/no deleted links/i)).toBeInTheDocument();
+    // There are two links in the system (the first fetch above) — the
+    // filter simply matched none of them, which "No links yet" would
+    // misreport as the account having no links at all.
+    expect(screen.queryByText(/no links yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/create your first short link/i)).not.toBeInTheDocument();
+  });
+
   it("says the tag filter is unavailable rather than looking like there are no tags when the tags request fails", async () => {
     vi.stubGlobal(
       "fetch",
