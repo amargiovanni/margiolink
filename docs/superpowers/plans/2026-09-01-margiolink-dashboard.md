@@ -3123,12 +3123,47 @@ git commit -m "feat(web): add the overview page"
 
 **Files:**
 - Create: `web/src/pages/Tags.tsx`, `web/src/pages/Settings.tsx`
-- Modify: `web/src/App.tsx`
-- Test: `web/src/pages/Tags.test.tsx`, `web/src/pages/Settings.test.tsx`
+- Modify: `web/src/App.tsx`, `web/src/lib/queries.ts`, `web/src/vite-env.d.ts`, `web/vite.config.ts`, `src/routes/api.ts`
+- Test: `web/src/pages/Tags.test.tsx`, `web/src/pages/Settings.test.tsx`, `test/routes/meta.test.ts`
 
 **Interfaces:**
 - Consumes: `useTags`, `useCreateTag`, `useDeleteTag`, `useSessions`, `useRevokeSession`, `useRevokeAllSessions`, `useLogout`.
-- Produces: the `/tags` and `/settings` routes.
+- Produces: the `/tags` and `/settings` routes; `useMeta()`.
+
+- [ ] **Step 0: Give the About and Data groups something to read**
+
+Two of the three facts Settings is meant to display have no client-visible
+source. `RAW_RETENTION_DAYS` and `SHORT_DOMAIN` are Worker environment
+variables — used by the cron and by the server-rendered `/privacy` page, and
+reachable from no API. The dashboard cannot state a retention window it has no
+way to learn, and inventing a constant in the client would be a number that
+drifts silently from the one the deletion job actually uses.
+
+Add `GET /api/meta`, authenticated like every other `/api` route, returning:
+
+```json
+{ "retentionDays": 180, "shortDomain": "link.margio.uk" }
+```
+
+`retentionDays` is `Number(env.RAW_RETENTION_DAYS)`. Neither value is a secret —
+both are already stated on the public `/privacy` page — but the route stays
+behind the session like the rest of `/api`, because there is no reason to widen
+the anonymous surface for them.
+
+Then add `useMeta()` to `web/src/lib/queries.ts`.
+
+Worker tests in `test/routes/meta.test.ts`: the route requires a session; it
+returns the retention days as a **number**, not the environment's string; and it
+returns the configured short domain. Write the number assertion so it fails if
+the value is passed through unconverted — `"180"` and `180` are different
+answers and only one of them formats correctly.
+
+The version is a separate matter and belongs to the build, not the API: inject
+`package.json`'s version via Vite's `define` in `web/vite.config.ts`, declare it
+in `web/src/vite-env.d.ts`, and read it in the About group. Do not add it to the
+meta endpoint — the Worker and the dashboard are built together here, but the
+version a reader wants in About is the one baked into the assets they are
+looking at.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3138,7 +3173,13 @@ git commit -m "feat(web): add the overview page"
 
 - [ ] **Step 2: Implement**
 
-Settings shows three groups: **Sessions** (the list plus the two revoke actions), **Data** (the retention window read-only, and a CSV export built in the browser from the links list plus the stats endpoints — no new endpoint), and **About** (the deployment's short domain, a link to `/privacy`, and the project's version from `package.json` injected at build time by Vite's `define`).
+Settings shows three groups: **Sessions** (the list plus the two revoke actions), **Data** (the retention window read-only, and a CSV export built in the browser from the links list plus the stats endpoints — no new endpoint), and **About** (the deployment's short domain and retention window from `useMeta()`, a link to `/privacy`, and the project's version injected at build time by Vite's `define`).
+
+The CSV export pages through `/api/links` rather than exporting one page. The
+list is paginated at 50, so an export that takes only the first page would hand
+a reader a file that looks complete and silently is not — the worst shape of
+wrong, and one this plan has already had to fix twice. If the export cannot
+complete, say so; do not produce a partial file without saying it is partial.
 
 The retention figure is read-only on purpose: it is a Worker environment variable, and a control that appears to change it but cannot would be a lie. Say where it is set.
 
