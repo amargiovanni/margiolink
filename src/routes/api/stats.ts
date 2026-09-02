@@ -110,7 +110,10 @@ stats.get("/live", async (c) => {
     .safeParse(c.req.query("limit") ?? 50);
   if (!limit.success) return c.json({ error: "invalid_limit" }, 400);
 
-  const clicks = await recentClicks(c.env.DB, limit.data);
+  const linkId = z.coerce.number().int().positive().optional().safeParse(c.req.query("linkId"));
+  if (!linkId.success) return c.json({ error: "invalid_link" }, 400);
+
+  const clicks = await recentClicks(c.env.DB, limit.data, linkId.data);
   return c.json({
     clicks: clicks.map((row) => ({
       id: row.id,

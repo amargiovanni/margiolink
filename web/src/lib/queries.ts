@@ -102,12 +102,20 @@ export function useDimension(range: Range, name: string, limit = 20) {
   });
 }
 
-/** Polls, because the feed is the one place a stale number is visibly wrong. */
-export function useLive(limit = 50) {
+/** Polls, because the feed is the one place a stale number is visibly wrong.
+ *  `linkId` is part of the query key — without it, switching between two
+ *  links' detail pages would serve one link's cached feed under the other's
+ *  name. `paused` stops the interval rather than the query itself, so a
+ *  caller can resume by refetching once rather than waiting up to 10s. */
+export function useLive(
+  limit = 50,
+  linkId?: number,
+  { paused = false }: { paused?: boolean } = {},
+) {
   return useQuery({
-    queryKey: keys.stats("live", limit),
-    queryFn: () => api.get<{ clicks: LiveClick[] }>("/api/stats/live", { limit }),
-    refetchInterval: 10_000,
+    queryKey: keys.stats("live", { limit, linkId }),
+    queryFn: () => api.get<{ clicks: LiveClick[] }>("/api/stats/live", { limit, linkId }),
+    refetchInterval: paused ? false : 10_000,
   });
 }
 

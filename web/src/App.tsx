@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router";
 import { AppShell } from "./components/layout/AppShell";
 import { RequireSession } from "./components/RequireSession";
+import LinkDetail from "./pages/LinkDetail";
 import Links from "./pages/Links";
 import Login from "./pages/Login";
 
@@ -18,6 +19,16 @@ export default function App() {
           <RequireSession>
             <AppShell>
               <Links />
+            </AppShell>
+          </RequireSession>
+        }
+      />
+      <Route
+        path="/links/:id"
+        element={
+          <RequireSession>
+            <AppShell>
+              <LinkDetail />
             </AppShell>
           </RequireSession>
         }

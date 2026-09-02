@@ -6,15 +6,20 @@ const DAY = 86_400;
 const BASE = Date.parse("2026-03-10T00:00:00Z") / 1000;
 let cookie = "";
 let linkId = 0;
+let otherLinkId = 0;
 
-async function insertClick(ts: number, overrides: Record<string, unknown> = {}) {
-  const row = { visitor_hash: `v${ts}`, country: "IT", is_bot: 0, ...overrides };
+async function insertClickFor(id: number, ts: number, overrides: Record<string, unknown> = {}) {
+  const row = { visitor_hash: `v${id}-${ts}`, country: "IT", is_bot: 0, ...overrides };
   await env.DB.prepare(
     `INSERT INTO clicks (link_id, ts, visitor_hash, source, outcome, is_bot, country)
      VALUES (?, ?, ?, 'link', 'redirect', ?, ?)`,
   )
-    .bind(linkId, ts, row.visitor_hash, row.is_bot, row.country)
+    .bind(id, ts, row.visitor_hash, row.is_bot, row.country)
     .run();
+}
+
+async function insertClick(ts: number, overrides: Record<string, unknown> = {}) {
+  return insertClickFor(linkId, ts, overrides);
 }
 
 beforeEach(async () => {
@@ -23,6 +28,8 @@ beforeEach(async () => {
   await env.DB.prepare("DELETE FROM admin_sessions").run();
 
   linkId = (await createLink(env.DB, { slug: "stats", targetUrl: "https://e.com" }, BASE)).id;
+  otherLinkId = (await createLink(env.DB, { slug: "stats-2", targetUrl: "https://e2.com" }, BASE))
+    .id;
 
   const res = await SELF.fetch("https://link.test/api/auth/login", {
     method: "POST",
@@ -60,6 +67,20 @@ describe("GET /api/stats/summary", () => {
   it("rejects a missing range", async () => {
     expect((await api("/api/stats/summary")).status).toBe(400);
   });
+
+  it("scopes to one link when linkId is supplied, and covers both when it is not", async () => {
+    await insertClickFor(linkId, BASE + 100);
+    await insertClickFor(linkId, BASE + 200);
+    await insertClickFor(otherLinkId, BASE + 100);
+
+    const scoped = await api(`/api/stats/summary?from=${BASE}&to=${BASE + DAY}&linkId=${linkId}`);
+    const scopedBody = (await scoped.json()) as { current: { clicks: number } };
+    expect(scopedBody.current.clicks).toBe(2);
+
+    const all = await api(`/api/stats/summary?from=${BASE}&to=${BASE + DAY}`);
+    const allBody = (await all.json()) as { current: { clicks: number } };
+    expect(allBody.current.clicks).toBe(3);
+  });
 });
 
 describe("GET /api/stats/timeseries", () => {
@@ -80,6 +101,21 @@ describe("GET /api/stats/timeseries", () => {
   it("rejects a range where from is after to", async () => {
     const res = await api(`/api/stats/timeseries?from=${BASE + DAY}&to=${BASE}&granularity=hour`);
     expect(res.status).toBe(400);
+  });
+
+  it("scopes to one link when linkId is supplied, and covers both when it is not", async () => {
+    await insertClickFor(linkId, BASE + 100);
+    await insertClickFor(otherLinkId, BASE + 200);
+
+    const scoped = await api(
+      `/api/stats/timeseries?from=${BASE}&to=${BASE + DAY}&granularity=hour&linkId=${linkId}`,
+    );
+    const scopedBody = (await scoped.json()) as { buckets: { clicks: number }[] };
+    expect(scopedBody.buckets.reduce((sum, b) => sum + b.clicks, 0)).toBe(1);
+
+    const all = await api(`/api/stats/timeseries?from=${BASE}&to=${BASE + DAY}&granularity=hour`);
+    const allBody = (await all.json()) as { buckets: { clicks: number }[] };
+    expect(allBody.buckets.reduce((sum, b) => sum + b.clicks, 0)).toBe(2);
   });
 });
 
@@ -116,6 +152,21 @@ describe("GET /api/stats/dimension", () => {
   it("rejects a range where from is after to", async () => {
     const res = await api(`/api/stats/dimension?name=country&from=${BASE + DAY}&to=${BASE}`);
     expect(res.status).toBe(400);
+  });
+
+  it("scopes to one link when linkId is supplied, and covers both when it is not", async () => {
+    await insertClickFor(linkId, BASE + 1, { country: "IT" });
+    await insertClickFor(otherLinkId, BASE + 2, { country: "FR" });
+
+    const scoped = await api(
+      `/api/stats/dimension?name=country&from=${BASE}&to=${BASE + DAY}&linkId=${linkId}`,
+    );
+    const scopedBody = (await scoped.json()) as { slices: { value: string }[] };
+    expect(scopedBody.slices.map((s) => s.value)).toStrictEqual(["IT"]);
+
+    const all = await api(`/api/stats/dimension?name=country&from=${BASE}&to=${BASE + DAY}`);
+    const allBody = (await all.json()) as { slices: { value: string }[] };
+    expect(allBody.slices.map((s) => s.value).sort()).toStrictEqual(["FR", "IT"]);
   });
 });
 
@@ -189,6 +240,20 @@ describe("GET /api/stats/live", () => {
   it("caps the limit", async () => {
     const res = await api("/api/stats/live?limit=99999");
     expect(res.status).toBe(400);
+  });
+
+  it("scopes to one link when linkId is supplied, and covers both when it is not", async () => {
+    await insertClickFor(linkId, BASE + 1);
+    await insertClickFor(otherLinkId, BASE + 2);
+
+    const scoped = await api(`/api/stats/live?limit=10&linkId=${linkId}`);
+    const scopedBody = (await scoped.json()) as { clicks: { linkId: number }[] };
+    expect(scopedBody.clicks).toHaveLength(1);
+    expect(scopedBody.clicks[0]?.linkId).toBe(linkId);
+
+    const all = await api("/api/stats/live?limit=10");
+    const allBody = (await all.json()) as { clicks: { linkId: number }[] };
+    expect(allBody.clicks).toHaveLength(2);
   });
 });
 
