@@ -12,7 +12,8 @@ channel, what time of day — without ever writing down who the visitor was.
 
 > **Status:** the backend and the dashboard are both complete, covered by 640
 > tests — 350 inside `workerd` against real D1, 290 in a browser (jsdom)
-> environment. Sign in at `/app`. See [Roadmap](#roadmap).
+> environment — plus 22 end-to-end tests in a real Chromium, in CI on every
+> pull request. Sign in at `/app`. See [Roadmap](#roadmap).
 
 ---
 
@@ -24,6 +25,7 @@ channel, what time of day — without ever writing down who the visitor was.
 - [Architecture](#architecture)
 - [The dashboard](#the-dashboard)
 - [Running it locally](#running-it-locally)
+- [End-to-end tests](#end-to-end-tests)
 - [Deploying your own](#deploying-your-own)
 - [Configuration](#configuration)
 - [API reference](#api-reference)
@@ -268,6 +270,33 @@ curl "localhost:8787/cdn-cgi/local/scheduled?cron=0+*+*+*+*"    # hourly rollup
 curl "localhost:8787/cdn-cgi/local/scheduled?cron=30+3+*+*+*"   # daily retention
 ```
 
+## End-to-end tests
+
+`npm test` runs entirely against stubbed data (`jsdom` has no CSS cascade, no
+layout, no real focus model, no canvas and no navigation) — it cannot see a
+focus ring that never renders, a redirect that loops, a QR PNG that encodes
+the wrong URL, or a colour that fails contrast. `e2e/` covers exactly that
+gap, in a real Chromium, against the real Worker and a real (throwaway) D1.
+It is not a second pass over what `npm test` already checks.
+
+```bash
+npx playwright install chromium   # once
+npm run e2e                       # headless
+npm run e2e:ui                    # Playwright's UI mode, for writing/debugging
+```
+
+`npm run e2e` builds the dashboard and starts `wrangler dev` itself
+(`e2e/playwright.config.ts`'s `webServer`), then seeds two links, a tag and
+~50 real clicks through the actual API (`e2e/seed.ts`) before any test runs.
+It needs the same `npm run db:migrate:local` this section's "Running it
+locally" step above already asked for — a fresh clone's local D1 has no
+schema yet, and the suite has nothing to log into or click through without
+one. It does **not** need or read your `.dev.vars`: it writes its own fixed,
+fake `ADMIN_USER`/`ADMIN_PASSWORD`/`HASH_SECRET` via `e2e/fixtures.ts`
+(overridable with `E2E_ADMIN_USER`/`E2E_ADMIN_PASSWORD` if your local
+`.dev.vars` already uses different values) — the same values CI writes into
+its own `.dev.vars`, which does not exist there otherwise.
+
 ## Deploying your own
 
 MargioLink is meant to be self-hosted. Everything below happens in your own
@@ -486,9 +515,10 @@ than silently eating history.
 ```bash
 npm test                    # 640 tests: 350 inside workerd against real D1, 290 in jsdom
 npm run test:watch
+npm run e2e                 # 22 tests in a real Chromium — see "End-to-end tests" above
 npm run check               # Biome: lint and format
 npm run check:fix
-npm run typecheck           # tsc --noEmit (backend and dashboard both)
+npm run typecheck           # tsc --noEmit (backend, dashboard and e2e/, each their own project)
 npm run build:web           # builds the dashboard into web/dist
 npm run dev:web             # Vite dev server for the dashboard — see "The dashboard" above
 npm run db:verify-rollback  # proves the newest migration is reversible
@@ -502,10 +532,11 @@ stubbed API and include a cross-cutting accessibility sweep
 level, every image, form control and button named, no positive `tabIndex`,
 and every chart inside a named region.
 
-CI runs lint, types and the full suite on every pull request, plus a separate
-job that applies the migrations, rolls the newest one back, and checks the
-schema both changed and came back identical. A migration added without a
-working down file fails there.
+CI runs lint, types and the full suite on every pull request, a separate job
+that applies the migrations, rolls the newest one back, and checks the schema
+both changed and came back identical (a migration added without a working
+down file fails there), and a third that runs the end-to-end suite in a real
+Chromium and uploads the HTML report if it fails.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions and the review bar.
 

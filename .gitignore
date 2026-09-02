@@ -15,6 +15,11 @@ build/
 .wrangler/
 web/dist/
 
+# Playwright (e2e/) — traces, videos and reports from a local run
+e2e/.artifacts/
+test-results/
+playwright-report/
+
 # Editor / OS
 .DS_Store
 .idea/

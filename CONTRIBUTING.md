@@ -91,6 +91,22 @@ npm run dev
 If `npm test` is not green on a fresh clone, that is a bug — please open an
 issue rather than working around it.
 
+**End-to-end tests** (`e2e/`) run in a real Chromium against the real Worker,
+not against stubbed data — `jsdom` (what `npm test`'s dashboard half uses) has
+no CSS cascade, no layout, no real focus model, no canvas and no navigation,
+so it cannot see a focus ring that never renders, a redirect that loops, a QR
+code that encodes the wrong URL, or a colour that fails contrast. Every test
+in `e2e/` is there because one of those specifically happened on this branch.
+
+```bash
+npx playwright install chromium   # once
+npm run e2e
+```
+
+It reuses the `db:migrate:local` step above and needs nothing else from your
+environment — it never reads your `.dev.vars`, and writes its own fixed, fake
+credentials before starting the Worker (`e2e/fixtures.ts`).
+
 ## The three rules that are not negotiable
 
 Everything else in this document is guidance. These three are the reason the
@@ -246,8 +262,10 @@ template will prompt you. Two specific asks:
 - If you deviated from something this document says, say so and why. A stated
   deviation is a discussion; an unstated one is a surprise in review.
 
-Before you push: `npm test`, `npm run check`, `npm run typecheck`. CI runs all
-three, but finding out locally is faster.
+Before you push: `npm test`, `npm run check`, `npm run typecheck`, and — if
+your change touches the dashboard's markup, styling, routing or the files it
+downloads — `npm run e2e`. CI runs all four, but finding out locally is
+faster.
 
 ## What review looks for
 

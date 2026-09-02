@@ -41,6 +41,50 @@ jobs:
       - name: Tests
         run: npm test
 
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      # Test-only values. They have no production meaning and unlock nothing:
+      # the suite runs against a throwaway local D1 inside the runner.
+      #
+      # HASH_SECRET must be at least 32 characters — src/lib/secrets.ts
+      # refuses to serve any request otherwise. The task brief's first
+      # suggested value was 28; every redirect and every login answered 500
+      # until this was caught by running the suite against it (see the Task
+      # 15 report).
+      - name: Write test credentials
+        run: |
+          printf 'ADMIN_USER=e2e\nADMIN_PASSWORD=e2e-password-not-a-secret\nHASH_SECRET=e2e-hash-secret-not-a-secret-00000\n' > .dev.vars
+
+      # playwright.config.ts's webServer starts `wrangler dev` against
+      # whatever this runner's D1 already has — nothing, on a fresh checkout.
+      # `npm run dev` documents the same step for local use (README.md);
+      # deliberately not folded into webServer's own command, so the two
+      # stay the same one step apart rather than one hiding inside the other.
+      - name: Apply D1 migrations (local)
+        run: npm run db:migrate:local
+
+      - run: npm run e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
   migrations:
     name: Migration rollback
     runs-on: ubuntu-latest
