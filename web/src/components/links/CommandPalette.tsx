@@ -8,6 +8,12 @@ import { SECTIONS } from "../layout/PrimaryNav";
 const ITEM_CLASSNAME =
   "cursor-pointer rounded px-2 py-2 text-sm text-ink data-[selected=true]:bg-surface-sunken";
 const GROUP_CLASSNAME = "px-2 py-1 text-xs text-ink-faint [&_[cmdk-group-items]]:mt-1";
+const FORM_FIELD_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
+
+function isFormField(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || FORM_FIELD_TAGS.has(target.tagName);
+}
 
 /** The recent-links section is its own component, rendered only inside
  *  `RadixDialog.Content` (which Radix does not mount at all while the dialog
@@ -23,7 +29,13 @@ function RecentLinksGroup({ onSelect }: { onSelect: (to: string) => void }) {
       {recentLinks.map((link) => (
         <Command.Item
           key={link.id}
-          value={`recent-${link.id}`}
+          // cmdk filters on `value`, not on the rendered children — a
+          // `value` built from the id (as this once was) meant typing a
+          // link's actual title matched nothing. This is the text a person
+          // would actually type: the title when there is one, always
+          // including the slug too (which is unique, so this also can't
+          // collide across two links sharing a title).
+          value={`${link.title ?? ""} ${link.slug}`.trim()}
           onSelect={() => onSelect(`/links/${link.id}`)}
           className={ITEM_CLASSNAME}
         >
@@ -48,13 +60,17 @@ export function CommandPalette() {
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key.toLowerCase() !== "k" || !(event.metaKey || event.ctrlKey)) return;
-      const target = event.target as HTMLElement | null;
-      // A rich-text editor elsewhere on the page may bind Ctrl/Cmd+K to its
-      // own "insert link" command — the browser's (or editor's) own
-      // behaviour there is what the brief means by "not swallowed".
-      // MargioLink has no such editor today, but the guard costs nothing and
-      // survives one being added later without this shortcut fighting it.
-      if (target?.isContentEditable) return;
+      // Ctrl+Shift+K opens Firefox's Web Console — not ours to take. A
+      // plain Alt/Option+K carries no meaning here either, so leave any
+      // modified-beyond-the-two-we-bind combination alone.
+      if (event.shiftKey || event.altKey) return;
+      // Any place where typing "k" while holding the modifier means
+      // something to the field itself — a text input, a textarea, a
+      // select, or a rich-text editor's own Ctrl/Cmd+K binding (e.g.
+      // "insert link", common in WYSIWYG editors) — the field's own
+      // behaviour wins and this shortcut stays out of its way, including
+      // the Links page's own search box.
+      if (isFormField(event.target)) return;
       event.preventDefault();
       setOpen((value) => !value);
     }

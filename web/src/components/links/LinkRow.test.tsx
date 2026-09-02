@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -84,6 +84,16 @@ describe("LinkRow", () => {
     expect(screen.getByLabelText(/custom slug/i)).toHaveValue(LINK.slug);
   });
 
+  it("puts default focus on the first field when the edit dialog opens, not the × close button", async () => {
+    stubFetch();
+    renderRow([]);
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /edit/i }));
+    await screen.findByRole("dialog");
+
+    expect(await screen.findByLabelText(/destination/i)).toHaveFocus();
+  });
+
   it("deactivates an active link with a single click and no confirmation", async () => {
     const spy = stubFetch();
     renderRow([]);
@@ -96,6 +106,20 @@ describe("LinkRow", () => {
     expect(call).toBeTruthy();
     const body = JSON.parse(String((call as [string, RequestInit])[1].body));
     expect(body).toEqual({ isActive: false });
+  });
+
+  it("activates an inactive link with a single click and no confirmation", async () => {
+    const spy = stubFetch();
+    renderRow([], { ...LINK, isActive: false });
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /^activate$/i }));
+
+    const call = spy.mock.calls.find(
+      (c) => new URL(String(c[0]), "https://link.test").pathname === "/api/links/1",
+    );
+    expect(call).toBeTruthy();
+    const body = JSON.parse(String((call as [string, RequestInit])[1].body));
+    expect(body).toEqual({ isActive: true });
   });
 
   it("does not call the delete mutation until the confirmation is accepted", async () => {
@@ -144,5 +168,66 @@ describe("LinkRow", () => {
     await screen.findByRole("dialog", { name: /delete launch/i });
 
     expect(await screen.findByRole("button", { name: /cancel/i })).toHaveFocus();
+  });
+
+  it("pressing Escape on the delete confirmation never calls the mutation", async () => {
+    const spy = stubFetch();
+    renderRow([]);
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /delete/i }));
+    await screen.findByRole("dialog", { name: /delete launch/i });
+
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(spy.mock.calls.some((c) => (c[1] as RequestInit | undefined)?.method === "DELETE")).toBe(
+      false,
+    );
+  });
+
+  it("clicking outside the delete confirmation never calls the mutation", async () => {
+    const spy = stubFetch();
+    renderRow([]);
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /delete/i }));
+    await screen.findByRole("dialog", { name: /delete launch/i });
+
+    // Radix's dialog sets `pointer-events: none` on `<body>` while open (to
+    // block interaction with the page behind it), which `userEvent.click`
+    // itself refuses to click through — so this dispatches the raw
+    // `pointerdown`-then-`click` pair Radix's own outside-click detection
+    // listens for (Dialog defers the dismissal from pointerdown to the
+    // following click, so a real pointer press can't be mistaken for the
+    // start of a text selection), bypassing only `userEvent`'s protective
+    // check, not Radix's.
+    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(spy.mock.calls.some((c) => (c[1] as RequestInit | undefined)?.method === "DELETE")).toBe(
+      false,
+    );
+  });
+
+  it("surfaces a failed delete rather than showing nothing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const path = new URL(String(input), "https://link.test").pathname;
+        if (path === "/api/tags") return Response.json({ tags: [] });
+        return Response.json({ error: "boom" }, { status: 500 });
+      }),
+    );
+    renderRow([]);
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /delete/i }));
+    await screen.findByRole("dialog", { name: /delete launch/i });
+
+    await userEvent.click(screen.getByRole("button", { name: /^delete$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not delete/i);
+    // The failure must not be quietly treated as success — the dialog stays
+    // open so the reader can see the message and retry.
+    expect(screen.getByRole("dialog", { name: /delete launch/i })).toBeInTheDocument();
   });
 });

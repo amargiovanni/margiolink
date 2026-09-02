@@ -76,18 +76,28 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
   const deleteMutation = useDeleteLink();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function handleToggleActive() {
     updateMutation.mutate({ id: link.id, isActive: !link.isActive });
   }
 
+  function handleOpenDelete() {
+    setDeleteError(null);
+    setDeleteOpen(true);
+  }
+
   function handleConfirmDelete() {
+    setDeleteError(null);
     // `useDeleteLink`'s own `onSuccess` invalidates the links list; closing
     // the confirmation here only needs to happen once the delete actually
-    // succeeds — a failed delete leaves the dialog open with the mutation's
-    // own error state available to a future retry, rather than silently
-    // pretending it worked.
-    deleteMutation.mutate(link.id, { onSuccess: () => setDeleteOpen(false) });
+    // succeeds — a failed delete leaves the dialog open, with the failure
+    // surfaced right there (rather than nowhere at all) and the mutation's
+    // own error state available to a future retry.
+    deleteMutation.mutate(link.id, {
+      onSuccess: () => setDeleteOpen(false),
+      onError: () => setDeleteError("Could not delete this link. Try again."),
+    });
   }
 
   return (
@@ -150,7 +160,7 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
                 {link.isActive ? "Deactivate" : "Activate"}
               </DropdownMenu.Item>
               <DropdownMenu.Item
-                onSelect={() => setDeleteOpen(true)}
+                onSelect={handleOpenDelete}
                 className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-critical outline-none data-[highlighted]:bg-critical/10"
               >
                 <Trash2 className="size-4" aria-hidden="true" />
@@ -170,6 +180,7 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
         description="This permanently deletes the link and its click history. This cannot be undone."
         confirmLabel="Delete"
         confirming={deleteMutation.isPending}
+        error={deleteError}
         onConfirm={handleConfirmDelete}
       />
     </div>

@@ -16,6 +16,11 @@ export interface ConfirmDialogProps {
   /** Set while the confirmed action is in flight, so a slow request can't be
    *  fired twice by an impatient second click. */
   confirming?: boolean;
+  /** Shown when the confirmed action itself failed — the dialog stays open
+   *  (the caller controls `open`, not this component) so the message and a
+   *  retry are both right there rather than the failure vanishing along
+   *  with a dialog that already looked dismissed. */
+  error?: string | null;
 }
 
 /** The one confirmation dialog for the one irreversible action in this
@@ -32,6 +37,7 @@ export function ConfirmDialog({
   confirmLabel,
   onConfirm,
   confirming = false,
+  error = null,
 }: ConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
 
@@ -46,6 +52,14 @@ export function ConfirmDialog({
         cancelRef.current?.focus();
       }}
     >
+      {error && (
+        <p
+          role="alert"
+          className="mb-2 rounded border border-critical/40 bg-critical/10 px-3 py-2 text-sm text-critical"
+        >
+          {error}
+        </p>
+      )}
       <div className="flex justify-end gap-2 pt-2">
         <Button ref={cancelRef} type="button" variant="ghost" onClick={() => onOpenChange(false)}>
           Cancel

@@ -56,6 +56,19 @@ export function LinkDialog(props: LinkDialogProps) {
         open={open}
         onOpenChange={onOpenChange}
         title={mode === "create" ? "New link" : `Edit ${link?.slug}`}
+        onOpenAutoFocus={(event) => {
+          // Radix's own default focuses this dialog's first focusable
+          // descendant, which is `Dialog`'s own "×" Close button — WAI-ARIA's
+          // dialog guidance puts initial focus on the element most likely to
+          // be used instead, which in a form is its first field. `event`'s
+          // target is the dialog's content container (Radix dispatches the
+          // auto-focus event on it directly), so the first field is found by
+          // querying inside it rather than needing a ref threaded through
+          // `LinkForm`.
+          event.preventDefault();
+          const content = event.target as HTMLElement | null;
+          content?.querySelector<HTMLElement>("input, textarea, select")?.focus();
+        }}
       >
         <LinkForm mode={mode} link={link} onDone={handleDone} />
       </Dialog>

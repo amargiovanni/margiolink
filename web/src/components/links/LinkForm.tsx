@@ -103,6 +103,7 @@ const inputClassName =
 export function LinkForm({ mode, link, onDone }: LinkFormProps) {
   const [banner, setBanner] = useState<string | null>(null);
   const [tagIds, setTagIds] = useState<number[]>(() => link?.tags.map((tag) => tag.id) ?? []);
+  const [passwordRemoved, setPasswordRemoved] = useState(false);
 
   const createMutation = useCreateLink();
   const updateMutation = useUpdateLink();
@@ -147,14 +148,33 @@ export function LinkForm({ mode, link, onDone }: LinkFormProps) {
 
   async function onSubmit(values: FormValues) {
     setBanner(null);
+    const isEdit = mode === "edit";
     const body: Record<string, unknown> = { targetUrl: values.targetUrl };
     if (values.slug) body.slug = values.slug;
+
+    // `updateLink` (src/db/links.ts) skips any column whose patch value is
+    // `undefined` and writes NULL for one that is explicitly `null` — that
+    // is the entire reason the API distinguishes "absent" from "null" for
+    // these fields. In create mode there is nothing to clear, so an empty
+    // field is simply omitted; in edit mode an emptied field must send an
+    // explicit `null` or the old value survives the save silently.
     if (values.title) body.title = values.title;
+    else if (isEdit) body.title = null;
+
     if (values.description) body.description = values.description;
+    else if (isEdit) body.description = null;
+
     if (values.expiresAt) {
       body.expiresAt = localInputToUnix(values.expiresAt);
       if (values.expiredUrl) body.expiredUrl = values.expiredUrl;
+      // A fallback URL with no expiry to belong to is meaningless — clear
+      // it along with the expiry rather than leaving it orphaned.
+      else if (isEdit) body.expiredUrl = null;
+    } else if (isEdit) {
+      body.expiresAt = null;
+      body.expiredUrl = null;
     }
+
     if (values.password) body.password = values.password;
 
     try {
@@ -176,8 +196,10 @@ export function LinkForm({ mode, link, onDone }: LinkFormProps) {
 
   async function handleRemovePassword() {
     if (!link) return;
+    setPasswordRemoved(false);
     try {
       await removePasswordMutation.mutateAsync({ id: link.id, password: null });
+      setPasswordRemoved(true);
     } catch (error) {
       applyError(error);
     }
@@ -244,16 +266,25 @@ export function LinkForm({ mode, link, onDone }: LinkFormProps) {
       </Field>
 
       {mode === "edit" && link?.hasPassword && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          loading={removePasswordMutation.isPending}
-          onClick={handleRemovePassword}
-          className="self-start"
-        >
-          Remove password
-        </Button>
+        <div className="flex flex-col items-start gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            loading={removePasswordMutation.isPending}
+            onClick={handleRemovePassword}
+          >
+            Remove password
+          </Button>
+          {/* A failure already surfaces through the shared `banner` above
+           *  (`applyError`) — this only needs to confirm success, which
+           *  nothing else here would otherwise announce. */}
+          {passwordRemoved && (
+            <p role="status" className="text-sm text-ink-muted">
+              Password removed.
+            </p>
+          )}
+        </div>
       )}
 
       <TagPicker value={tagIds} onChange={setTagIds} />
