@@ -73,4 +73,49 @@ describe("ChartFrame", () => {
     );
     expect(container.querySelector("[data-legend]")).toBeNull();
   });
+
+  it("still renders the real table when the query succeeded, even with no rows", async () => {
+    render(
+      <ChartFrame title="Clicks by country" table={{ columns: table.columns, rows: [] }}>
+        <svg aria-hidden="true" />
+      </ChartFrame>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /table/i }));
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows the same failure in the table pane that the chart pane shows, instead of an empty table", async () => {
+    render(
+      <ChartFrame
+        title="Clicks by country"
+        table={{ columns: table.columns, rows: [] }}
+        status="error"
+        errorMessage="Could not load this breakdown."
+      >
+        <p role="alert">Could not load this breakdown.</p>
+      </ChartFrame>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /table/i }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not load this breakdown.");
+    // Never the same pixels as a real empty result: no table markup at all,
+    // not a table with zero rows.
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("shows a loading state in the table pane while pending, not an empty table", async () => {
+    render(
+      <ChartFrame
+        title="Clicks by country"
+        table={{ columns: table.columns, rows: [] }}
+        status="pending"
+      >
+        <p>Loading…</p>
+      </ChartFrame>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /table/i }));
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

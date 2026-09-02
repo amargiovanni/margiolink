@@ -11,12 +11,34 @@ export function ChartFrame({
   description,
   series = [],
   table,
+  status,
+  errorMessage = "Could not load this data.",
   children,
 }: {
   title: string;
   description?: string;
   series?: SeriesLabel[];
   table: TableData;
+  /** The state of the query behind both panes. `undefined` (every existing
+   *  caller before this prop existed) means "succeeded" — `table` is real
+   *  data and the table pane renders it as-is.
+   *
+   *  `table` is always built at the call site as `query.data?.slices ?? []`
+   *  or similar, so on a pending or failed query it already arrives here as
+   *  `[]` — indistinguishable, by shape alone, from a period that
+   *  genuinely had no data. Without `status`, the table pane would render
+   *  that `[]` as a plain empty table: a false "no data" standing in for
+   *  "no data *yet*" or "no data because this failed". `status` is what
+   *  lets the table pane show the true state instead of guessing it from a
+   *  shape that cannot tell the three apart — the chart pane's `children`
+   *  already makes this distinction per call site; this is the same
+   *  distinction, applied to the other pane, so absence and failure are
+   *  never the same pixels twice. */
+  status?: "pending" | "error";
+  /** Shown in both panes' failed state. Match the chart pane's own message
+   *  (passed to `children` separately) so a reader sees one sentence for
+   *  one failure, not two different ones depending which pane they're on. */
+  errorMessage?: string;
   children: ReactNode;
 }) {
   const [view, setView] = useState<"chart" | "table">("chart");
@@ -72,7 +94,17 @@ export function ChartFrame({
         </div>
       </header>
 
-      {view === "chart" ? children : <TableView {...table} caption={title} />}
+      {view === "chart" ? (
+        children
+      ) : status === "error" ? (
+        <p role="alert" className="py-6 text-center text-sm text-critical">
+          {errorMessage}
+        </p>
+      ) : status === "pending" ? (
+        <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
+      ) : (
+        <TableView {...table} caption={title} />
+      )}
     </section>
   );
 }
