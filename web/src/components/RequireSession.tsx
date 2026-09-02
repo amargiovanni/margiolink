@@ -11,7 +11,13 @@ export function RequireSession({ children }: { children: ReactNode }) {
 
   if (isPending) return <div className="p-8 text-ink-muted">Loading…</div>;
   if (error instanceof ApiError) {
-    if (error.status === 401) return <Navigate to="/app/login" replace />;
+    // Basename-relative. `BrowserRouter basename="/app"` (main.tsx) prepends
+    // "/app" itself, so an already-prefixed target resolves to `/app/app/login`
+    // — no route in App.tsx, whose paths are all basename-relative. That fell
+    // into the protected `/*` catch-all, which 401s and redirects here again:
+    // an infinite loop. Pinned by RequireSession.test.tsx, which is the only
+    // test in this suite that mounts a router WITH the real basename.
+    if (error.status === 401) return <Navigate to="/login" replace />;
     // The API answered — just not with success. Naming the status keeps
     // whoever debugs this looking at the right layer: the request reached
     // the server and it rejected it, which is a different failure than the

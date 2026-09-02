@@ -26,7 +26,10 @@ export default function Login() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    login.mutate({ username, password }, { onSuccess: () => navigate("/app") });
+    // Basename-relative — see the note in RequireSession.tsx. "/app" here
+    // resolved to `/app/app`, landing a freshly signed-in reader on the
+    // catch-all placeholder instead of the overview.
+    login.mutate({ username, password }, { onSuccess: () => navigate("/") });
   }
 
   return (
