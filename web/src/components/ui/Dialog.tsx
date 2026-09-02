@@ -17,6 +17,15 @@ export interface DialogProps {
   description?: string;
   children: ReactNode;
   className?: string;
+  /** Escape hatch for the rare caller that needs to steer initial focus
+   *  away from Radix's own default (the first focusable descendant, which
+   *  is this component's own "Close" button) — `ConfirmDialog` (Task 10)
+   *  uses this to put default focus on Cancel instead, since Radix's
+   *  auto-focus happens on its own timing and isn't reliably beaten by a
+   *  caller re-focusing from a plain effect after mount. Forwarded verbatim
+   *  to `RadixDialog.Content`'s own `onOpenAutoFocus`; every other caller
+   *  can leave it unset and keep the default behaviour. */
+  onOpenAutoFocus?: (event: Event) => void;
 }
 
 /** Wraps Radix's Dialog for focus trapping, `aria-*` wiring, Escape-to-close
@@ -29,12 +38,14 @@ export function Dialog({
   description,
   children,
   className,
+  onOpenAutoFocus,
 }: DialogProps) {
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         <RadixDialog.Overlay className="fixed inset-0 z-40 bg-surface-sunken/80" />
         <RadixDialog.Content
+          onOpenAutoFocus={onOpenAutoFocus}
           className={cn(
             "fixed top-1/2 left-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-rule bg-surface-raised p-6 shadow-lg",
             className,

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { CommandPalette } from "../links/CommandPalette";
 import { PrimaryNav } from "./PrimaryNav";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -6,12 +7,15 @@ import { ThemeToggle } from "./ThemeToggle";
  * The frame every authenticated page renders inside: a skip link that is the
  * first focusable element and actually moves focus (not just scrolls) to
  * `#main`, one `PrimaryNav` landmark (a rail above 1024px, a bottom bar
- * below it — see PrimaryNav for why it is one element, not two), and the
- * `<main>` landmark itself.
+ * below it — see PrimaryNav for why it is one element, not two), the
+ * `<main>` landmark itself, and the `⌘K`/`Ctrl+K` command palette — mounted
+ * once here rather than per-page, so it's reachable from anywhere the shell
+ * wraps.
  */
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-full flex-col lg:flex-row">
+      <CommandPalette />
       <a
         href="#main"
         className="

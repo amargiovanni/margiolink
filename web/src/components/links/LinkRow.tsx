@@ -1,10 +1,17 @@
-import { Link as RouterLink } from "react-router";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { MoreHorizontal, Pencil, Power, QrCode, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Link as RouterLink, useNavigate } from "react-router";
 import { hexToRgb, readableTextColor } from "../../lib/contrast";
 import { formatCount } from "../../lib/format";
 import type { Link, Tag } from "../../lib/queries";
+import { useDeleteLink, useUpdateLink } from "../../lib/queries";
 import { Sparkline } from "../charts/Sparkline";
 import { Badge } from "../ui/Badge";
+import { Button } from "../ui/Button";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { CopyButton } from "./CopyButton";
+import { LinkDialog } from "./LinkDialog";
 
 /** The tag colour is picked by the user and stored in the database — there is
  *  no validated-palette rule that can (or should) govern it. What *is*
@@ -28,6 +35,9 @@ function TagBadge({ tag }: { tag: Tag }) {
   );
 }
 
+const MENU_ITEM_CLASSNAME =
+  "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-ink outline-none data-[highlighted]:bg-surface-sunken";
+
 export interface LinkRowProps {
   link: Link;
   /** The last 7 daily click counts for this link, oldest first. `null`
@@ -46,16 +56,39 @@ export interface LinkRowProps {
  *  last group, so there is no separate mobile/desktop markup to keep in
  *  sync and no `<table>` — these are navigational cards, not tabular data.
  *
- *  The row's action menu (Edit, QR code, Deactivate, Delete) is not part of
- *  this task: Edit and QR have nowhere to go yet, and wiring Deactivate or
- *  Delete without a confirmation step would trade a menu for an
- *  accidental-data-loss trap. Rendering four inert items to "look finished"
- *  was worse than not rendering the menu at all — a later task adds it back
- *  once each item has somewhere real to go. See the comment further below,
- *  at the point the trigger used to sit, for how Task 10 should wire it
- *  and why `disabled` isn't the mechanism. */
+ *  The row's action menu (Edit, QR code, Deactivate, Delete) uses Radix's
+ *  `DropdownMenu` with every item always present and reachable — never
+ *  Radix's `Item disabled` prop. `disabled` also sets `focusable: !disabled`
+ *  in the roving-focus group behind the menu, and that group's arrow-key
+ *  handler cycles only focusable entries: inside a `role="menu"`'s
+ *  application mode, that is the *only* interaction a screen reader uses, so
+ *  a `disabled` item is invisible to it while a sighted user still sees it
+ *  greyed out. There is currently no item in this menu that is genuinely
+ *  unavailable to the viewer (a permission they lack, Activate on an
+ *  already-active link) — if one is added later, mark it with
+ *  `aria-disabled="true"` plus `onSelect={(e) => e.preventDefault()}`,
+ *  which keeps it in the roving-focus set and announces it correctly,
+ *  rather than `disabled`. */
 export function LinkRow({ link, sparkline }: LinkRowProps) {
   const clicks = sparkline?.reduce((sum, value) => sum + value, 0) ?? null;
+  const navigate = useNavigate();
+  const updateMutation = useUpdateLink();
+  const deleteMutation = useDeleteLink();
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  function handleToggleActive() {
+    updateMutation.mutate({ id: link.id, isActive: !link.isActive });
+  }
+
+  function handleConfirmDelete() {
+    // `useDeleteLink`'s own `onSuccess` invalidates the links list; closing
+    // the confirmation here only needs to happen once the delete actually
+    // succeeds — a failed delete leaves the dialog open with the mutation's
+    // own error state available to a future retry, rather than silently
+    // pretending it worked.
+    deleteMutation.mutate(link.id, { onSuccess: () => setDeleteOpen(false) });
+  }
 
   return (
     <div className="flex flex-col gap-2 border-b border-rule py-3 last:border-b-0 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center sm:gap-4">
@@ -90,29 +123,55 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
 
         <CopyButton value={link.shortUrl} label={`Copy short link for ${link.slug}`} />
 
-        {/* The action menu (Edit, QR code, Deactivate, Delete) belongs
-         *  here. Task 10 reintroduces it with all four items wired: Edit
-         *  opens the link dialog, QR navigates to the detail page, and
-         *  Delete goes through a confirmation dialog rather than firing on
-         *  the menu click.
-         *
-         *  When an item in that menu is genuinely unavailable rather than
-         *  simply not built yet (e.g. Delete when the viewer lacks
-         *  permission, or Activate on a link that's already active), mark
-         *  it with `aria-disabled="true"` plus `onSelect={(e) =>
-         *  e.preventDefault()}` — NOT Radix's `disabled` prop. `disabled`
-         *  drops the item from the roving-focus group entirely
-         *  (`focusable: !disabled`), so inside a `role="menu"`'s
-         *  application mode a screen reader never encounters it at all,
-         *  while a sighted user still sees it greyed out. `aria-disabled`
-         *  keeps the item in the arrow-key cycle and announces it as
-         *  unavailable — true for a permission gate, but not true here:
-         *  an unbuilt feature isn't "unavailable to you", it doesn't
-         *  exist yet, and announcing otherwise would tell the user
-         *  something false about the product. That's why this menu is
-         *  absent rather than present-and-disabled until Task 10 gives
-         *  its items somewhere real to go. */}
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <Button variant="ghost" size="sm" aria-label={`Actions for ${link.slug}`}>
+              <MoreHorizontal className="size-4" aria-hidden="true" />
+            </Button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              align="end"
+              className="min-w-40 rounded border border-rule bg-surface-raised p-1 shadow-lg"
+            >
+              <DropdownMenu.Item onSelect={() => setEditOpen(true)} className={MENU_ITEM_CLASSNAME}>
+                <Pencil className="size-4" aria-hidden="true" />
+                Edit
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                onSelect={() => navigate(`/links/${link.id}`)}
+                className={MENU_ITEM_CLASSNAME}
+              >
+                <QrCode className="size-4" aria-hidden="true" />
+                QR code
+              </DropdownMenu.Item>
+              <DropdownMenu.Item onSelect={handleToggleActive} className={MENU_ITEM_CLASSNAME}>
+                <Power className="size-4" aria-hidden="true" />
+                {link.isActive ? "Deactivate" : "Activate"}
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                onSelect={() => setDeleteOpen(true)}
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-critical outline-none data-[highlighted]:bg-critical/10"
+              >
+                <Trash2 className="size-4" aria-hidden="true" />
+                Delete
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
       </div>
+
+      <LinkDialog mode="edit" link={link} open={editOpen} onOpenChange={setEditOpen} />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={`Delete ${link.slug}?`}
+        description="This permanently deletes the link and its click history. This cannot be undone."
+        confirmLabel="Delete"
+        confirming={deleteMutation.isPending}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }

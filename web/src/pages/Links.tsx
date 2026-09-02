@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
+import { LinkDialog } from "../components/links/LinkDialog";
 import { LinkRow } from "../components/links/LinkRow";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -26,6 +28,25 @@ export default function Links() {
   const [status, setStatus] = useState("all");
   const [tagId, setTagId] = useState("all");
   const [limit, setLimit] = useState(PAGE_SIZE);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // The command palette's "New link" action can't reach this page's own
+  // dialog state directly — it navigates here with `?new=1` instead, and
+  // this consumes that one-shot intent on arrival, stripping the param so a
+  // later back/forward navigation or refresh doesn't reopen the dialog on
+  // its own.
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return;
+    setCreateOpen(true);
+    setSearchParams(
+      (params) => {
+        params.delete("new");
+        return params;
+      },
+      { replace: true },
+    );
+  }, [searchParams, setSearchParams]);
 
   // Debounced into the query key: the fetch only fires once typing settles
   // for 250ms, rather than once per keystroke. A filter change also resets
@@ -86,8 +107,9 @@ export default function Links() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <h1 className="font-display text-3xl text-ink">Links</h1>
-        {/* Inert for this task — Task 10 wires the create dialog. */}
-        <Button aria-label="New link">New link</Button>
+        <Button aria-label="New link" onClick={() => setCreateOpen(true)}>
+          New link
+        </Button>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -160,6 +182,8 @@ export default function Links() {
           </Button>
         </div>
       )}
+
+      <LinkDialog mode="create" open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   );
 }

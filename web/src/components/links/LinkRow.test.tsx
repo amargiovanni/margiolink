@@ -1,6 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Link } from "../../lib/queries";
 import { LinkRow } from "./LinkRow";
 
@@ -21,12 +23,28 @@ const LINK: Link = {
   tags: [],
 };
 
-function renderRow(sparkline: number[] | null) {
+afterEach(() => vi.unstubAllGlobals());
+
+function renderRow(sparkline: number[] | null, link: Link = LINK) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter>
-      <LinkRow link={LINK} sparkline={sparkline} />
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <LinkRow link={link} sparkline={sparkline} />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
+}
+
+function stubFetch() {
+  const spy = vi.fn(async (input: string, _init?: RequestInit) => {
+    const path = new URL(String(input), "https://link.test").pathname;
+    if (path === "/api/tags") return Response.json({ tags: [] });
+    if (/^\/api\/links\/\d+$/.test(path)) return Response.json({ link: LINK });
+    return Response.json({ ok: true });
+  });
+  vi.stubGlobal("fetch", spy);
+  return spy;
 }
 
 describe("LinkRow", () => {
@@ -46,8 +64,85 @@ describe("LinkRow", () => {
     expect(screen.getByText("0 clicks, last 7 days")).toBeInTheDocument();
   });
 
-  it("has no action menu — Edit, QR, Deactivate and Delete have nowhere to go yet", () => {
+  it("offers Edit, QR code, Deactivate and Delete from one reachable menu", async () => {
+    stubFetch();
     renderRow([]);
-    expect(screen.queryByRole("button", { name: /actions for/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+    expect(await screen.findByRole("menuitem", { name: /edit/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /qr code/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /deactivate/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /delete/i })).toBeInTheDocument();
+  });
+
+  it("opens the edit dialog pre-filled with the link's current values", async () => {
+    stubFetch();
+    renderRow([]);
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /edit/i }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByLabelText(/destination/i)).toHaveValue(LINK.targetUrl);
+    expect(screen.getByLabelText(/custom slug/i)).toHaveValue(LINK.slug);
+  });
+
+  it("deactivates an active link with a single click and no confirmation", async () => {
+    const spy = stubFetch();
+    renderRow([]);
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /deactivate/i }));
+
+    const call = spy.mock.calls.find(
+      (c) => new URL(String(c[0]), "https://link.test").pathname === "/api/links/1",
+    );
+    expect(call).toBeTruthy();
+    const body = JSON.parse(String((call as [string, RequestInit])[1].body));
+    expect(body).toEqual({ isActive: false });
+  });
+
+  it("does not call the delete mutation until the confirmation is accepted", async () => {
+    const spy = stubFetch();
+    renderRow([]);
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /delete/i }));
+
+    // The confirmation must open, and the DELETE request must not have gone
+    // out yet — this is the assertion that fails if Delete fires on the
+    // menu click and only shows the dialog for decoration afterwards.
+    expect(await screen.findByRole("dialog", { name: /delete launch/i })).toBeInTheDocument();
+    expect(spy.mock.calls.some((c) => (c[1] as RequestInit | undefined)?.method === "DELETE")).toBe(
+      false,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /^delete$/i }));
+
+    await waitFor(() => {
+      expect(
+        spy.mock.calls.some((c) => (c[1] as RequestInit | undefined)?.method === "DELETE"),
+      ).toBe(true);
+    });
+  });
+
+  it("cancelling the delete confirmation never calls the mutation", async () => {
+    const spy = stubFetch();
+    renderRow([]);
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /delete/i }));
+    await screen.findByRole("dialog", { name: /delete launch/i });
+
+    await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(spy.mock.calls.some((c) => (c[1] as RequestInit | undefined)?.method === "DELETE")).toBe(
+      false,
+    );
+  });
+
+  it("cancel takes the default focus when the delete confirmation opens", async () => {
+    stubFetch();
+    renderRow([]);
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /delete/i }));
+    await screen.findByRole("dialog", { name: /delete launch/i });
+
+    expect(await screen.findByRole("button", { name: /cancel/i })).toHaveFocus();
   });
 });
