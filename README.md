@@ -194,10 +194,19 @@ shell, and the SPA's own router takes it from there.
 - **Overview** — the KPI row (clicks, unique visitors, countries reached, bot
   share), each with a sparkline and a delta against the preceding period; the
   time-series chart with adaptive granularity; top links; a world map; device
-  breakdown.
+  breakdown. The period picker only ever offers a period whose *comparison*
+  window (the preceding span of equal length every delta is measured
+  against) also fits inside `RAW_RETENTION_DAYS` — a period whose own span
+  fits but whose comparison window does not would show `previous` as a false
+  zero and every KPI as a false "new" increase. At the shipped 180-day
+  retention this drops the 12-month option; raising `RAW_RETENTION_DAYS`
+  brings it back with no code change (`web/src/lib/ranges.ts`'s `periodsFor`,
+  fed by `GET /api/meta`'s `retentionDays`).
 - **Links** — the working list, with instant search, status and tag filters, a
   7-day sparkline per row, and one-tap copy. `⌘K` opens a command palette to
-  create a link from anywhere in the app.
+  create a link from anywhere in the app. The status filter includes
+  **Deleted**: a soft-deleted link (see `DELETE /api/links/:id` below) stays
+  reachable there, with a Restore action in its row menu.
 - **Link detail** — every collected dimension as a ranked, proportional-bar
   list (countries with flags, cities, browsers, operating systems, referrers,
   UTM campaigns, and more), an hour-by-weekday heatmap, a live click feed, the
@@ -452,7 +461,7 @@ and ignored. `sparklines` takes neither: it is a fixed trailing window.
 | --- | --- | --- |
 | `GET` | `/api/stats/summary` | Returns `current` and `previous` — the preceding window of equal length |
 | `GET` | `/api/stats/timeseries` | `&granularity=hour\|day\|week` |
-| `GET` | `/api/stats/dimension` | `&name=<dimension>&limit=` (max 100) |
+| `GET` | `/api/stats/dimension` | `&name=<dimension>&limit=` (max 168 — `dow_hour`'s own bounded maximum, 7 days × 24 hours; every other dimension has unbounded cardinality, where the cap is the point) |
 | `GET` | `/api/stats/live` | `?limit=` (max 200) — recent clicks |
 | `GET` | `/api/stats/top-links` | `&limit=` — links ranked by clicks in the window. Excludes soft-deleted links; ties break on slug so the order is stable between refreshes |
 | `GET` | `/api/stats/sparklines` | `?days=` (max 90) — per-link daily counts |
@@ -464,8 +473,16 @@ Dimensions: `country`, `city`, `device`, `os`, `browser`, `referrer_type`,
 Bots are excluded from every figure except the `bots` count in `summary`.
 
 **One caveat the API cannot hide:** these endpoints read raw click rows, so a
-range extending past `RAW_RETENTION_DAYS` under-reports rather than failing.
-Serving older ranges from the aggregate tables is part of the dashboard work.
+range extending past `RAW_RETENTION_DAYS` under-reports rather than failing —
+no response carries a "truncated at" marker. The dashboard closes this by
+never *offering* such a range in the first place (see the Overview bullet
+above): every period its picker shows is one whose full comparison window
+still fits inside retention, so the under-report this paragraph describes
+cannot be reached through the shipped UI. A caller that queries these
+endpoints directly, or a future range picker that skips `periodsFor`, still
+hits it. Serving older ranges from the aggregate tables (`click_daily`,
+`click_daily_dim`) so a range past retention degrades to less-precise data
+instead of being unofferable at all remains separate, undone work.
 
 ### Public
 
