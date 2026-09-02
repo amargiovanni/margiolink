@@ -6,9 +6,7 @@ import { BASE_URL, CREDENTIALS } from "./fixtures";
  * (global setup always runs after `webServer` in Playwright's own task order),
  * and builds every fixture through the real HTTP API — never by touching D1
  * directly. That makes the seed itself a test of `/api/auth/login`,
- * `/api/links`, `/api/tags` and the redirect endpoint, and it is the only way
- * to populate `.dev.vars`-gated state without depending on the developer's
- * real one.
+ * `/api/links`, `/api/tags` and the redirect endpoint.
  *
  * Two things this environment genuinely cannot fake, and does not pretend to:
  *
@@ -78,7 +76,8 @@ async function loginForCookie(): Promise<string> {
   if (!response.ok) {
     throw new Error(
       `Seed login failed with ${response.status}: ${await response.text()}. ` +
-        "Check ADMIN_USER/ADMIN_PASSWORD in .dev.vars against e2e/fixtures.ts's CREDENTIALS.",
+        "playwright.config.ts's webServer should have passed CREDENTIALS to " +
+        "wrangler dev as --var ADMIN_USER/--var ADMIN_PASSWORD — check its command.",
     );
   }
   const setCookie = response.headers.get("set-cookie");

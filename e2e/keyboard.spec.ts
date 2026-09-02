@@ -11,6 +11,20 @@ import { expect, test } from "./fixtures";
  * ever have seen the ring fail to render — only `getComputedStyle` against a
  * real browser layout can.
  *
+ * The first version of the test below asserting this was itself vacuous, and
+ * this is worth recording permanently rather than only in the Task 15
+ * report: reintroducing `peer-focus-visible:*` and re-running it *passed*.
+ * Chromium's `getComputedStyle` reports a non-zero `outline-width` (the
+ * `medium` keyword's resolved length) and a non-transparent `outline-color`
+ * (`currentColor`) on the label regardless of whether `outline-style` is
+ * `none` — i.e. regardless of whether any ring actually renders. Those were
+ * the brief's own two specified checks. `outline-style !== "none"` is the
+ * one that is actually decisive, added below alongside them; see Step 8 in
+ * the task report for the verbatim before/after run. The lesson: a suite
+ * written specifically to close vacuous assertions can still ship one of
+ * its own, and the only way anyone finds out is by making it fail on
+ * purpose before trusting it to pass for the right reason.
+ *
  * The rest of this file is the general keyboard contract §6.2 promises for
  * the command palette, the create-link dialog and the one destructive action
  * in the dashboard — reached and operated with no `page.click`.

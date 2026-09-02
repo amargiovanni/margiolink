@@ -104,8 +104,11 @@ npm run e2e
 ```
 
 It reuses the `db:migrate:local` step above and needs nothing else from your
-environment — it never reads your `.dev.vars`, and writes its own fixed, fake
-credentials before starting the Worker (`e2e/fixtures.ts`).
+environment. It never reads or writes your `.dev.vars`: `e2e/playwright.config.ts`
+passes its own fixed, fake credentials (`e2e/fixtures.ts`) to `wrangler dev`
+as `--var` flags, which override any same-named `.dev.vars` entry — this
+works whether or not you have a `.dev.vars`, and the same command runs in
+CI, which has none.
 
 ## The three rules that are not negotiable
 

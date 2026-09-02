@@ -291,11 +291,13 @@ npm run e2e:ui                    # Playwright's UI mode, for writing/debugging
 It needs the same `npm run db:migrate:local` this section's "Running it
 locally" step above already asked for — a fresh clone's local D1 has no
 schema yet, and the suite has nothing to log into or click through without
-one. It does **not** need or read your `.dev.vars`: it writes its own fixed,
-fake `ADMIN_USER`/`ADMIN_PASSWORD`/`HASH_SECRET` via `e2e/fixtures.ts`
-(overridable with `E2E_ADMIN_USER`/`E2E_ADMIN_PASSWORD` if your local
-`.dev.vars` already uses different values) — the same values CI writes into
-its own `.dev.vars`, which does not exist there otherwise.
+one. It never reads or writes your `.dev.vars`: `webServer` passes its own
+fixed, fake `ADMIN_USER`/`ADMIN_PASSWORD`/`HASH_SECRET` straight to
+`wrangler dev` as `--var` flags (`e2e/fixtures.ts`), which override any
+same-named `.dev.vars` entry rather than needing one absent — the same
+values run locally and in CI, on a runner that has no `.dev.vars` at all.
+Override them with `E2E_ADMIN_USER`/`E2E_ADMIN_PASSWORD`/`E2E_HASH_SECRET` if
+you ever need different ones.
 
 ## Deploying your own
 

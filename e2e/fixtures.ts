@@ -1,22 +1,24 @@
 import { test as base, type Page } from "@playwright/test";
 
 /**
- * Fixed, fake, no-production-meaning test credentials — the same values
- * `seed.ts` logs in with and CI writes into `.dev.vars` before the Worker
- * starts (see `.github/workflows/ci.yml`). Never the developer's real
- * `.dev.vars`: CI has no such file, and a suite that needed one could not run
- * there.
- *
- * `HASH_SECRET` deliberately is NOT here — nothing in this suite reads it
- * directly, and the value CI writes must independently satisfy
+ * Fixed, fake, no-production-meaning test credentials. `playwright.config.ts`
+ * passes these straight to `wrangler dev` as `--var` flags — never through
+ * `.dev.vars`. `--var` overrides a same-named `.dev.vars` entry (verified
+ * interactively: a mismatched `.dev.vars` plus these `--var` values logs in
+ * with the `--var` values and rejects the `.dev.vars` ones), so the suite
+ * never reads, needs, or risks a developer's real `.dev.vars` — the same
+ * path runs locally and in CI, which is the property that keeps this
+ * suite honest. `HASH_SECRET` must independently satisfy
  * `src/lib/secrets.ts`'s 32-character minimum (discovered empirically: the
- * brief's first suggested value was 28 characters and made every redirect and
- * every login fail with a 500. See the Task 15 report.).
+ * brief's first suggested value was 28 characters and made every redirect
+ * and every login fail with a 500 — see the Task 15 report).
  */
 export const CREDENTIALS = {
   username: process.env.E2E_ADMIN_USER ?? "e2e",
   password: process.env.E2E_ADMIN_PASSWORD ?? "e2e-password-not-a-secret",
 };
+
+export const HASH_SECRET = process.env.E2E_HASH_SECRET ?? "e2e-hash-secret-not-a-secret-00000";
 
 /** Playwright's own `webServer.url` (playwright.config.ts) and `seed.ts`'s
  *  API calls both need this same origin — centralised here rather than

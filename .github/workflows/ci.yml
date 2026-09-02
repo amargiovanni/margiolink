@@ -56,18 +56,12 @@ jobs:
 
       - run: npx playwright install --with-deps chromium
 
-      # Test-only values. They have no production meaning and unlock nothing:
-      # the suite runs against a throwaway local D1 inside the runner.
+      # No credentials step here: e2e/playwright.config.ts's webServer passes
+      # its own fixed, fake ADMIN_USER/ADMIN_PASSWORD/HASH_SECRET to
+      # `wrangler dev` as --var flags (e2e/fixtures.ts), which override a
+      # .dev.vars entry of the same name and need no .dev.vars file to exist
+      # at all — this runner has none, and never will.
       #
-      # HASH_SECRET must be at least 32 characters — src/lib/secrets.ts
-      # refuses to serve any request otherwise. The task brief's first
-      # suggested value was 28; every redirect and every login answered 500
-      # until this was caught by running the suite against it (see the Task
-      # 15 report).
-      - name: Write test credentials
-        run: |
-          printf 'ADMIN_USER=e2e\nADMIN_PASSWORD=e2e-password-not-a-secret\nHASH_SECRET=e2e-hash-secret-not-a-secret-00000\n' > .dev.vars
-
       # playwright.config.ts's webServer starts `wrangler dev` against
       # whatever this runner's D1 already has — nothing, on a fresh checkout.
       # `npm run dev` documents the same step for local use (README.md);

@@ -1,5 +1,18 @@
 import { defineConfig, devices } from "@playwright/test";
-import { BASE_URL } from "./fixtures";
+import { BASE_URL, CREDENTIALS, HASH_SECRET } from "./fixtures";
+
+/** `wrangler dev`'s `--var KEY:VALUE` overrides a same-named `.dev.vars`
+ *  entry (verified interactively — see the comment on `CREDENTIALS` in
+ *  `fixtures.ts`), so the suite supplies its own environment on the command
+ *  line and never reads or writes `.dev.vars` at all: the local path and the
+ *  CI path (which has no `.dev.vars` to begin with) are the same path. */
+const WRANGLER_VARS = [
+  ["ADMIN_USER", CREDENTIALS.username],
+  ["ADMIN_PASSWORD", CREDENTIALS.password],
+  ["HASH_SECRET", HASH_SECRET],
+]
+  .map(([key, value]) => `--var ${key}:${value}`)
+  .join(" ");
 
 /**
  * End-to-end coverage for what `jsdom` (the `web` Vitest project) structurally
@@ -45,7 +58,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: "npm run build:web && npx wrangler dev --port 8787 --local",
+    command: `npm run build:web && npx wrangler dev --port 8787 --local ${WRANGLER_VARS}`,
     url: `${BASE_URL}/_health`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
