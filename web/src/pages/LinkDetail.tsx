@@ -122,8 +122,18 @@ export default function LinkDetail() {
   const scanQuery = useDimension(range, "source");
   const outcomeQuery = useDimension(range, "outcome");
 
-  if (linkQuery.isError) {
-    const notFound = linkQuery.error instanceof ApiError && linkQuery.error.status === 404;
+  // A non-finite id (an unparseable route param, e.g. `/links/abc`) leaves
+  // `useLink` permanently disabled — it never settles into `isError` or
+  // `isSuccess` on its own, so without this check the page would sit on
+  // "Loading link…" forever. That is the worst failure shape available:
+  // indistinguishable from merely slow, with nothing for the reader to act
+  // on. Treated identically to a 404 rather than as a separate state,
+  // because from the reader's point of view it is the same fact: there is
+  // no such link.
+  if (!Number.isFinite(linkId) || linkQuery.isError) {
+    const notFound =
+      !Number.isFinite(linkId) ||
+      (linkQuery.error instanceof ApiError && linkQuery.error.status === 404);
     return (
       <div className="flex flex-col items-center gap-2 py-16 text-center">
         <p className="font-display text-xl text-ink">

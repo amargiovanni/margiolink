@@ -240,6 +240,24 @@ describe("LinkDetail", () => {
     expect(await screen.findByText(/that link does not exist/i)).toBeInTheDocument();
   });
 
+  it("renders 'That link does not exist' for a non-numeric id, rather than loading forever", async () => {
+    stub(DEFAULT_ROUTES);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/links/not-a-number"]}>
+          <Routes>
+            <Route path="/links/:id" element={<LinkDetail />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    // `useLink` is disabled for a non-finite id and never settles on its
+    // own — this must not depend on that query ever resolving.
+    expect(await screen.findByText(/that link does not exist/i)).toBeInTheDocument();
+    expect(screen.queryByText(/loading link/i)).not.toBeInTheDocument();
+  });
+
   it("hides the UTM panels when their dimensions return no slices", async () => {
     stub({
       ...DEFAULT_ROUTES,
@@ -267,9 +285,48 @@ describe("LinkDetail", () => {
       ...DEFAULT_ROUTES,
       "/api/stats/dimension": dimensionByName({
         utm_campaign: { slices: [{ value: "spring-sale", clicks: 4, uniques: 3 }] },
+        utm_source: { slices: [{ value: "newsletter", clicks: 2, uniques: 2 }] },
+        utm_medium: { slices: [{ value: "email", clicks: 1, uniques: 1 }] },
       }),
     });
     renderDetail();
     expect(await screen.findByText("Campaigns")).toBeInTheDocument();
+    expect(screen.getByText("Sources")).toBeInTheDocument();
+    expect(screen.getByText("Mediums")).toBeInTheDocument();
+  });
+
+  it("keeps the fourteen dimension panels in the brief's order", async () => {
+    // DEFAULT_ROUTES' dimension stub returns non-empty slices for every
+    // name it isn't told otherwise about, so all three UTM panels render
+    // here too — this test only means anything if the full set of fourteen
+    // is present to be ordered.
+    stub(DEFAULT_ROUTES);
+    renderDetail();
+    await screen.findByText("Countries");
+
+    const expectedOrder = [
+      "Countries",
+      "Cities",
+      "Devices",
+      "Operating systems",
+      "Browsers",
+      "Languages",
+      "Networks",
+      "Channels",
+      "Referrers",
+      "Campaigns",
+      "Sources",
+      "Mediums",
+      "Scans vs clicks",
+      "Outcomes",
+    ];
+
+    await waitFor(() => {
+      const headings = screen
+        .getAllByRole("heading", { level: 3 })
+        .map((heading) => heading.textContent);
+      const panelHeadings = headings.filter((text) => expectedOrder.includes(text ?? ""));
+      expect(panelHeadings).toStrictEqual(expectedOrder);
+    });
   });
 });
