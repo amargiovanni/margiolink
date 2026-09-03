@@ -129,39 +129,54 @@ test.describe("the link detail page", () => {
   });
 });
 
-test.describe("the overview", () => {
-  test("does not stretch a short panel to its neighbour's height", async ({
+test.describe("the panel grids", () => {
+  /**
+   * This one asserts a computed style rather than two heights, and the reason
+   * is worth writing down.
+   *
+   * The obvious test — "Top links" is shorter than "Clicks by country" — needs
+   * both panels to have data, and on CI neither does. `request.cf` under
+   * `wrangler dev --local` is fetched once per process from a fixed source
+   * (see `e2e/seed.ts`'s module comment), and on a runner it yields no usable
+   * country, so the country panel draws nothing and the top-links panel ranks
+   * fixtures that earlier specs have since deleted. Two empty cards are the
+   * same height whether or not the grid stretches them, which makes the
+   * geometric assertion pass for the wrong reason there and time out waiting
+   * for content that never arrives.
+   *
+   * So the overview is checked at the level where the defect actually lived:
+   * the grid's own `align-items`, resolved by a real browser from the real
+   * cascade — something jsdom cannot do either. The *behavioural* version of
+   * this assertion is the QR/live-feed test above, which has content on every
+   * runner and does compare heights.
+   */
+  test("let each card keep its own height instead of stretching", async ({
     authenticatedPage: page,
   }) => {
+    const gridOf = (locator: import("@playwright/test").Locator) =>
+      locator.evaluate((element) => {
+        const grid = element.parentElement;
+        if (!grid) return null;
+        const style = window.getComputedStyle(grid);
+        return { display: style.display, alignItems: style.alignItems };
+      });
+
     await page.goto("/app");
-
     const topLinks = page.getByRole("region", { name: "Top links" });
-    const countries = page.getByRole("region", { name: "Clicks by country" });
-    // The tall panel has to have its data before either is measured — a
-    // panel still loading is a few lines tall, and "the short one is
-    // shorter" would then be true of the wrong thing.
-    //
-    // Only the tall one, though. An earlier version waited for a row in
-    // "Top links" too and timed out on CI, where that panel can legitimately
-    // be empty: by the time this spec runs, other specs have deleted and
-    // deactivated the fixtures it ranks. An empty card is a perfectly good
-    // subject here — stretched, it was 828px of empty card — so what this
-    // waits for is that the panel is no longer *loading*, not that it has
-    // rows.
-    await countries.locator("[data-bar]").first().waitFor();
-    await page.waitForLoadState("networkidle");
-    await expect(topLinks.getByText("Loading…")).toHaveCount(0);
+    await topLinks.waitFor();
+    const overviewGrid = await gridOf(topLinks);
 
-    const [topBox, countryBox] = await boxesOf(page, topLinks, countries);
+    // Anti-vacuity: if the panel's parent is not the grid any more, this test
+    // is measuring the wrong element and should say so rather than pass.
+    expect(overviewGrid?.display).toBe("grid");
+    expect(overviewGrid?.alignItems).toBe("flex-start");
 
-    // In the same grid row — the comparison is meaningless otherwise.
-    expect(Math.abs(topBox.y - countryBox.y)).toBeLessThan(4);
+    await openLinkDetail(page);
+    const countries = page.getByRole("region", { name: "Countries" });
+    await countries.waitFor();
+    const dimensionGrid = await gridOf(countries);
 
-    // Strictly shorter, not "no taller": under the old `stretch` the two were
-    // exactly equal, so `toBeLessThanOrEqual` passed on the broken layout
-    // too — checked, by reverting the fix and watching this test stay green.
-    // On the e2e fixtures the gap is 258px against 828px, so the margin here
-    // is not a coincidence being pinned.
-    expect(topBox.height).toBeLessThan(countryBox.height);
+    expect(dimensionGrid?.display).toBe("grid");
+    expect(dimensionGrid?.alignItems).toBe("flex-start");
   });
 });

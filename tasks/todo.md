@@ -56,6 +56,9 @@ gap — nothing shows what this is.
 - [x] **Fixed:** panels stretched to their tallest neighbour — "Top links"
       (five rows) was exactly as tall as "Clicks by country" (twenty rows and
       a map), 828px against the 258px it needed. `items-start` on the three
-      grids. Pinned by `e2e/panel-heights.spec.ts`, whose first version passed
-      on the broken layout because `toBeLessThanOrEqual` is satisfied by the
-      equality that stretching guarantees.
+      grids. Pinned by `e2e/panel-heights.spec.ts` — whose first version passed
+      on the broken layout (`toBeLessThanOrEqual` is satisfied by the equality
+      stretching guarantees) and whose second timed out on CI, where neither
+      overview panel has any data to be tall with. It asserts the grid's
+      resolved `align-items` there now, and compares real heights on the one
+      pair that is populated on every runner.
