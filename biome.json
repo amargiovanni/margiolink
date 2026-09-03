@@ -8,7 +8,8 @@
       "web/**",
       "!web/dist",
       "e2e/**",
-      "!e2e/.artifacts"
+      "!e2e/.artifacts",
+      "!e2e/.wrangler"
     ]
   },
   "formatter": {
