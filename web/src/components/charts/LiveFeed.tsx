@@ -89,7 +89,31 @@ export function LiveFeed({ linkId }: { linkId: number }) {
       ) : clicks.length === 0 ? (
         <p className="text-sm text-ink-faint">No recent activity.</p>
       ) : (
-        <ul aria-live="off" className="flex flex-col gap-2">
+        /* Fifty rows with no bound is ~4,000px of page: the feed pushed
+           everything below it off the screen, and (before `items-start` on
+           the grid) stretched the QR panel beside it to match. Bounded here
+           instead, with its own scroll.
+
+           `tabIndex={0}` is not decoration. A scrollable region whose content
+           holds no focusable element cannot be scrolled by keyboard unless
+           the container itself can take focus — axe's
+           `scrollable-region-focusable` rule, WCAG 2.1.1. Every row here is
+           plain text, so the list is exactly that case. It also needs a name
+           once it is a focus stop, hence `aria-label`. */
+        <ul
+          aria-live="off"
+          aria-label="Recent clicks"
+          // Biome's rule assumes a tabindex on a non-interactive element is a
+          // stray focus stop. Here it is the only way a keyboard user reaches
+          // the rows below the fold: this is a scroll container and no row in
+          // it contains anything focusable, which is precisely the case axe's
+          // `scrollable-region-focusable` rule (WCAG 2.1.1) requires it for.
+          // Of the two rules, that one is right; `e2e/panel-heights.spec.ts`
+          // scrolls this list with the keyboard to prove it.
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: WCAG 2.1.1 requires it, see above
+          tabIndex={0}
+          className="flex max-h-88 flex-col gap-2 overflow-y-auto pr-1"
+        >
           {clicks.map((click) => (
             <li
               key={click.id}
