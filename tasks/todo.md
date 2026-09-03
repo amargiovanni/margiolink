@@ -49,11 +49,13 @@ gap — nothing shows what this is.
       worktree under `.claude/worktrees/` — Biome refuses to start when it
       finds a nested root configuration. The scripts now name the source
       directories instead of passing `.`.
-- [ ] **Not fixed, flagged:** the link detail page's live feed renders fifty
-      rows with no scroll container, so the panel is several thousand pixels
-      tall and the QR card beside it stretches to match. A `max-height` with
-      its own scroll would fix both; it is a change to the dashboard's layout
-      and does not belong in this PR.
-- [ ] **Not fixed, flagged:** on the overview, "Top links" shows five rows
-      while "Clicks by country" shows twenty, and the grid stretches the
-      shorter card to match — a tall empty panel in the middle of the page.
+- [x] **Fixed:** the link detail page's live feed rendered fifty rows with no
+      scroll container — several thousand pixels of panel. Bounded to 22rem
+      with its own scroll, and made a named keyboard focus stop, which a
+      scrollable region with no focusable rows has to be (WCAG 2.1.1).
+- [x] **Fixed:** panels stretched to their tallest neighbour — "Top links"
+      (five rows) was exactly as tall as "Clicks by country" (twenty rows and
+      a map), 828px against the 258px it needed. `items-start` on the three
+      grids. Pinned by `e2e/panel-heights.spec.ts`, whose first version passed
+      on the broken layout because `toBeLessThanOrEqual` is satisfied by the
+      equality that stretching guarantees.

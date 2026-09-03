@@ -445,8 +445,16 @@
             </div>
             <div>
               <dt>Tests</dt>
-              <dd>700</dd>
-              <dd class="gloss">375 inside workerd against real D1, 325 in a DOM, plus 32 end-to-end.</dd>
+              <!--
+                Deliberately "700+" rather than a figure: an exact count on a
+                marketing page is a number that goes stale on the next pull
+                request and nothing fails when it does. The README carries the
+                precise split, next to the command that prints it.
+              -->
+              <dd>700+</dd>
+              <dd class="gloss">
+                Inside workerd against a real D1, in a DOM, and end-to-end in a real Chromium.
+              </dd>
             </div>
             <div>
               <dt>Third parties</dt>

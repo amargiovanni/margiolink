@@ -68,6 +68,17 @@ running deployment appears under its own heading.
 
 ### Fixed
 
+- **The live click feed is bounded and scrolls.** It renders the last fifty
+  clicks and had no scroll container, so on a link with real traffic the panel
+  was several thousand pixels tall and pushed everything below it off the
+  page. It now has its own scroll, and is a keyboard focus stop — a scrollable
+  region whose rows hold nothing focusable cannot otherwise be scrolled
+  without a mouse (WCAG 2.1.1).
+- **Panels no longer stretch to their tallest neighbour.** A grid's default
+  `align-items: stretch` made "Top links" (five rows) exactly as tall as
+  "Clicks by country" (twenty rows and a map), and did the same to fourteen
+  ranked lists on the link detail page. Each card is now as tall as its
+  content.
 - **The links list no longer draws a full-width bar under every row.** The
   row's grid declared four columns for five cells, so the actions menu
   overflowed onto an implicit second row and stretched across the first

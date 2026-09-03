@@ -11,8 +11,8 @@ about each click to answer real questions — which country, which device, which
 channel, what time of day — without ever writing down who the visitor was.
 
 > **Status:** the backend, the dashboard and the public landing page are all
-> complete, covered by 700 tests — 375 inside `workerd` against real D1, 325 in
-> a browser (jsdom) environment — plus 32 end-to-end tests in a real Chromium,
+> complete, covered by 701 tests — 375 inside `workerd` against real D1, 326 in
+> a browser (jsdom) environment — plus 36 end-to-end tests in a real Chromium,
 > in CI on every pull request. Sign in at `/app`. See [Roadmap](#roadmap).
 
 [![The MargioLink overview: ninety days of clicks and unique visitors, top links, a world map, device and channel breakdowns, and an hour-by-weekday heatmap](docs/screenshots/overview-dark.jpg)](docs/screenshots/)
@@ -708,9 +708,9 @@ than silently eating history.
 ## Development
 
 ```bash
-npm test                    # 700 tests: 375 inside workerd against real D1, 325 in jsdom
+npm test                    # 701 tests: 375 inside workerd against real D1, 326 in jsdom
 npm run test:watch
-npm run e2e                 # 32 tests in a real Chromium — see "End-to-end tests" above
+npm run e2e                 # 36 tests in a real Chromium — see "End-to-end tests" above
 npm run check               # Biome: lint and format
 npm run check:fix
 npm run typecheck           # tsc --noEmit (backend, dashboard and e2e/, each their own project)
