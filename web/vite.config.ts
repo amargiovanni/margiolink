@@ -42,5 +42,36 @@ export default defineConfig({
     emptyOutDir: true,
     // The world atlas is ~90KB gzipped and only the map needs it.
     chunkSizeWarningLimit: 700,
+    rollupOptions: {
+      /**
+       * Two documents, and which one is `index.html` matters.
+       *
+       * Cloudflare's static-asset router serves a matching file *before* the
+       * Worker script runs, and with the default `html_handling`
+       * ("auto-trailing-slash") the file it serves at `/` is the asset root's
+       * `index.html`. So whatever is called `index.html` here is what an
+       * anonymous visitor to the bare domain gets — which is why the public
+       * landing page holds that name and the dashboard shell, which nobody
+       * signed out should be served, is `app.html`.
+       *
+       * `app.html` is reached two ways, both correct: the asset router
+       * answers `/app` with it directly, and the Worker's own `/app` and
+       * `/app/*` routes fetch it through the `ASSETS` binding for every
+       * client-side route below it (`src/routes/public.ts`).
+       */
+      input: {
+        landing: new URL("index.html", import.meta.url).pathname,
+        app: new URL("app.html", import.meta.url).pathname,
+      },
+    },
+  },
+  server: {
+    fs: {
+      // `index.html` embeds screenshots from `docs/screenshots/`, one level
+      // above this Vite root. The build resolves them regardless; this is
+      // what lets `npm run dev:web` serve them too instead of refusing the
+      // path as outside the root.
+      allow: [".."],
+    },
   },
 });

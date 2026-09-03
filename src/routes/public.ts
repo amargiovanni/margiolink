@@ -75,18 +75,47 @@ answering.</p>
 }
 
 export function registerPublicRoutes(app: Hono<{ Bindings: Env }>): void {
-  // The dashboard shell. Vite writes index.html to the asset root, so it is
-  // fetched by that path rather than by the /app URL the visitor requested.
+  /**
+   * The dashboard shell.
+   *
+   * `/app.html`, not `/index.html`: Cloudflare's asset router serves a
+   * matching file before this Worker runs, and at `/` that file is the asset
+   * root's `index.html` — which is the public landing page (`web/index.html`,
+   * see `web/vite.config.ts`'s two build inputs). The shell is a separate
+   * document precisely so the bare domain never serves the dashboard to
+   * someone who is not signed in.
+   *
+   * The asset router already answers `/app` with `app.html` on its own
+   * (`html_handling` defaults to "auto-trailing-slash", which serves
+   * `foo.html` at `/foo`). This route is what covers everything below it —
+   * `/app/links/12` matches no file, falls through to the Worker, and needs
+   * the shell so the SPA's router can take over.
+   */
   const shell = (c: { env: Env; req: { url: string } }) =>
-    c.env.ASSETS.fetch(new Request(new URL("/index.html", c.req.url)));
+    c.env.ASSETS.fetch(new Request(new URL("/app.html", c.req.url)));
 
   app.get("/app", (c) => shell(c));
   app.get("/app/*", (c) => shell(c));
 
   app.get("/privacy", (c) => c.html(privacyHtml(c.env.RAW_RETENTION_DAYS, c.env.SHORT_DOMAIN)));
 
+  /**
+   * Short links stay out of search indexes; the landing page does not.
+   *
+   * `Disallow: /` used to be the whole file, from when the root answered
+   * nothing. Now `/` is the public landing page (`web/index.html`) and is the
+   * one path here worth indexing, so it is allowed back — and only it.
+   * `Allow: /$` matches the root and nothing below it, and the longest
+   * matching rule wins for the crawlers that implement the standard, so a
+   * short link is still disallowed by the shorter, broader rule.
+   *
+   * The dashboard shell carries its own `noindex` meta tag as well
+   * (`web/app.html`), because robots.txt asks rather than tells.
+   */
   app.get("/robots.txt", (c) =>
-    c.text("User-agent: *\nDisallow: /\n", 200, { "content-type": "text/plain; charset=utf-8" }),
+    c.text("User-agent: *\nAllow: /$\nDisallow: /\n", 200, {
+      "content-type": "text/plain; charset=utf-8",
+    }),
   );
 
   // RFC 9116. The CRA's Annex I Part II requires a coordinated vulnerability
