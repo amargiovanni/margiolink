@@ -301,7 +301,6 @@ const SHOTS = [
   },
   {
     name: "qr-panel",
-    maxHeight: 420,
     theme: "dark",
     path: "/app/links/5",
     clip: (page) => page.getByRole("region", { name: "QR code" }),
@@ -309,7 +308,6 @@ const SHOTS = [
   },
   {
     name: "live-feed",
-    maxHeight: 620,
     theme: "dark",
     path: "/app/links/2",
     clip: (page) => page.getByRole("region", { name: "Live feed" }),
@@ -443,28 +441,12 @@ async function main() {
       const jpeg = Boolean(shot.fullPage) && !shot.clip;
       const file = `${OUT_DIR}/${shot.name}.${jpeg ? "jpg" : "png"}`;
 
-      if (shot.clip && shot.maxHeight) {
-        // Two panels on the link detail page are genuinely enormous: the live
-        // feed renders fifty rows with no scroll container, and the QR panel
-        // beside it stretches to match, so an element screenshot of either is
-        // several thousand pixels of mostly nothing. Clipping the page to the
-        // panel's own box, capped, photographs the top of it — which is the
-        // part worth showing — instead of the whole column.
-        const box = await shot.clip(page).boundingBox();
-        if (!box) throw new Error(`screenshots: ${shot.name} has no box to clip`);
-        await page.screenshot({
-          path: file,
-          fullPage: true,
-          clip: { ...box, height: Math.min(box.height, shot.maxHeight) },
-        });
-      } else {
-        const target = shot.clip ? shot.clip(page) : page;
-        await target.screenshot({
-          path: file,
-          fullPage: shot.clip ? undefined : shot.fullPage,
-          ...(jpeg ? { type: "jpeg", quality: 88 } : {}),
-        });
-      }
+      const target = shot.clip ? shot.clip(page) : page;
+      await target.screenshot({
+        path: file,
+        fullPage: shot.clip ? undefined : shot.fullPage,
+        ...(jpeg ? { type: "jpeg", quality: 88 } : {}),
+      });
 
       console.log(`  ✓ ${file}`);
 
