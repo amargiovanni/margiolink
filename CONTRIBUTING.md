@@ -216,7 +216,11 @@ to perform. Say so in a comment when that applies.
 **Everything in the repository is English** — code, identifiers, comments,
 commit messages, documentation.
 
-**Biome handles formatting and linting.** Run `npm run check:fix` before
+**Biome handles formatting and linting.** The `check` scripts name the source
+directories (`src test scripts web e2e`) rather than passing `.`: a second
+checkout under `.claude/worktrees/`, which this repo's own worktree convention
+creates and `.gitignore` hides, carries its own `biome.json`, and Biome refuses
+to run at all when it finds one nested under another. Run `npm run check:fix` before
 committing; do not argue with it in review.
 
 **TypeScript is strict, with `noUncheckedIndexedAccess`.** Indexed access gives

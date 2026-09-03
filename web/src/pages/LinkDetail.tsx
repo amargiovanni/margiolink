@@ -268,7 +268,11 @@ export default function LinkDetail() {
         )}
       </ChartFrame>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {/* `items-start` — see the same note in `Overview.tsx`. Fourteen ranked
+          lists of wildly different lengths (twenty countries beside two
+          device types) would otherwise every row stretch to its tallest
+          member. */}
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <DimensionPanel title="Countries" query={countryQuery} withFlags />
         <DimensionPanel title="Cities" query={cityQuery} />
         <DimensionPanel title="Devices" query={deviceQuery} />
@@ -289,7 +293,7 @@ export default function LinkDetail() {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <section
           aria-labelledby="live-feed-heading"
           className="rounded-lg border border-rule bg-surface-raised p-4"

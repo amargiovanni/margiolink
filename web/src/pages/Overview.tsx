@@ -274,7 +274,12 @@ export default function Overview() {
         )}
       </ChartFrame>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {/* `items-start`, not the grid's default `stretch`: these panels hold
+          ranked lists of very different lengths — five top links beside
+          twenty countries — and stretching the short one to match the tall
+          one pads it with a few hundred pixels of nothing. A card is as tall
+          as what is in it. */}
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <TopLinksPanel range={range} />
 
         <ChartFrame

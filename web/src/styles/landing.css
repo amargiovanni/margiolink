@@ -1,0 +1,944 @@
+/**
+ * The public landing page at `/`.
+ *
+ * Shares the dashboard's tokens — same warm near-black, same paper light
+ * mode, same amber, same Fraunces/IBM Plex pairing — because the screenshots
+ * embedded halfway down the page are of the product itself, and a marketing
+ * page in a different palette from the thing it is selling reads as somebody
+ * else's site.
+ *
+ * Written as component classes rather than utilities: the page is one long
+ * editorial layout with rules, small-caps labels and a ledger, and reading
+ * that as thirty-class strings in the markup would hide the structure the
+ * design is made of. Tailwind is still imported (through `tokens.css`) for
+ * preflight and the token variables.
+ */
+
+@import "@fontsource-variable/fraunces";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "./tokens.css";
+
+@layer base {
+  :root {
+    color-scheme: dark light;
+    /* The page's own measures, so the rhythm is set in one place: a text
+       column that stays readable, a wide column for the figures that need
+       room, and one gutter used by both. */
+    --measure: 34rem;
+    --wide: 76rem;
+    --gutter: clamp(1.25rem, 4vw, 3.5rem);
+    --rule: 1px solid var(--color-rule);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: clamp(0.95rem, 0.9rem + 0.2vw, 1.0625rem);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  p {
+    margin: 0;
+    text-wrap: pretty;
+  }
+
+  a {
+    color: inherit;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
+  }
+
+  /* Every number on this page is quoted from somewhere real, and several sit
+     in tables; tabular figures stop them shifting against each other. */
+  .tabular,
+  code,
+  th,
+  td {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* ---------------------------------------------------------------- shell */
+
+  /* Tailwind ships a `sr-only` utility, but this page is written in component
+     classes and one definition beside the rest of them beats one import's
+     worth of reliance on a utility layer nothing else here uses. */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .skip {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 100;
+    padding: 0.75rem 1rem;
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
+    font-weight: 600;
+  }
+  .skip:focus {
+    left: 0.5rem;
+    top: 0.5rem;
+  }
+
+  /**
+   * Paper grain and a single warm light source behind the masthead.
+   *
+   * Both are decoration and both are `aria-hidden`, drawn on one fixed layer
+   * so no section has to carry a background of its own. The turbulence is an
+   * inline SVG data URI rather than an image request: this page makes no
+   * third-party requests and no extra round trips, which is a claim it makes
+   * in its own copy a few hundred pixels further down.
+   */
+  .atmosphere {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        60rem 40rem at 78% -10%,
+        color-mix(in oklab, var(--color-accent) 22%, transparent),
+        transparent 70%
+      ),
+      radial-gradient(
+        44rem 30rem at 8% 12%,
+        color-mix(in oklab, var(--color-series-1) 12%, transparent),
+        transparent 72%
+      );
+    opacity: 0.5;
+  }
+
+  .grain {
+    position: fixed;
+    inset: -50%;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  main,
+  .masthead,
+  .colophon {
+    position: relative;
+    z-index: 1;
+  }
+
+  .band {
+    padding-inline: var(--gutter);
+  }
+
+  .band > * {
+    max-width: var(--wide);
+    margin-inline: auto;
+  }
+
+  .section {
+    padding-block: clamp(4rem, 9vw, 7.5rem);
+    border-top: var(--rule);
+  }
+
+  /* --------------------------------------------------------------- header */
+
+  .masthead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.1rem var(--gutter);
+    border-bottom: var(--rule);
+    /* Sticky, translucent, and blurred — the one piece of chrome on the page,
+       so the reader always has the repository link within reach. */
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in oklab, var(--color-surface) 82%, transparent);
+    backdrop-filter: blur(12px) saturate(1.2);
+  }
+
+  .wordmark {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-decoration: none;
+  }
+
+  .wordmark .mark {
+    display: inline-grid;
+    place-items: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 0.45rem;
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
+    font-size: 0.95rem;
+    transform: translateY(0.1rem);
+  }
+
+  .masthead nav {
+    display: flex;
+    align-items: center;
+    gap: clamp(0.75rem, 2vw, 1.75rem);
+    font-size: 0.9rem;
+  }
+
+  .masthead nav a {
+    color: var(--color-ink-muted);
+    text-decoration: none;
+  }
+  .masthead nav a:hover {
+    color: var(--color-ink);
+  }
+
+  /* `.masthead nav a` outweighs `.button`, so without this the GitHub button
+     inherited the muted link colour and its label all but vanished against
+     the amber fill. Found by looking at the screenshot, which is the whole
+     reason `npm run screenshots` exists. */
+  .masthead nav a.button {
+    color: var(--color-accent-ink);
+  }
+
+  .masthead .desk-only {
+    display: none;
+  }
+  @media (min-width: 46rem) {
+    .masthead .desk-only {
+      display: inline;
+    }
+  }
+
+  /* ---------------------------------------------------------------- atoms */
+
+  .label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+  }
+
+  .label::before {
+    content: attr(data-index);
+    color: var(--color-accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .label::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--color-rule);
+  }
+
+  .lede {
+    max-width: var(--measure);
+    color: var(--color-ink-muted);
+    font-size: 1.05em;
+  }
+
+  .button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.15rem;
+    border: 1px solid transparent;
+    border-radius: 0.6rem;
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-decoration: none;
+    transition:
+      transform 120ms ease,
+      filter 120ms ease;
+  }
+  .button:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.06);
+  }
+
+  .button.ghost {
+    background: transparent;
+    border-color: var(--color-rule);
+    color: var(--color-ink);
+  }
+  .button.ghost:hover {
+    border-color: var(--color-accent);
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.25rem 0.7rem;
+    border: var(--rule);
+    border-radius: 999px;
+    font-size: 0.78rem;
+    color: var(--color-ink-muted);
+    background: color-mix(in oklab, var(--color-surface-raised) 70%, transparent);
+  }
+
+  .dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    background: var(--color-good);
+  }
+
+  code {
+    font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+    font-size: 0.86em;
+  }
+
+  /* ----------------------------------------------------------------- hero */
+
+  .hero {
+    padding-block: clamp(3.5rem, 8vw, 6.5rem) clamp(3rem, 6vw, 5rem);
+  }
+
+  .hero h1 {
+    max-width: 18ch;
+    font-size: clamp(2.75rem, 1.6rem + 5.4vw, 5.75rem);
+    margin-block: 1.5rem 1.5rem;
+  }
+
+  /* The one word the whole page turns on, marked the way a proof-reader
+     marks a correction rather than with a highlighter. */
+  .hero h1 em {
+    font-style: normal;
+    /* A real underline rather than a positioned bar: `skip-ink` is on by
+       default, so the rule breaks around the descender of the "p" instead of
+       striking through it. */
+    text-decoration: underline;
+    text-decoration-color: var(--color-accent);
+    text-decoration-thickness: 0.055em;
+    text-underline-offset: 0.14em;
+  }
+
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 2.25rem;
+  }
+
+  .hero-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1.75rem;
+  }
+
+  /* --------------------------------------------------------- screenshots */
+
+  /**
+   * A screenshot in a frame that suggests a window without drawing a fake
+   * browser: one hairline, one raised surface, a soft drop shadow and three
+   * dots. The image is the product's own pixels, so the frame's job is to
+   * stay out of the way.
+   */
+  .frame {
+    border: var(--rule);
+    border-radius: 0.9rem;
+    background: var(--color-surface-raised);
+    overflow: hidden;
+    box-shadow:
+      0 1px 0 color-mix(in oklab, var(--color-ink) 6%, transparent),
+      0 30px 60px -30px rgb(0 0 0 / 0.55),
+      0 60px 120px -60px rgb(0 0 0 / 0.5);
+  }
+
+  .frame-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 0.8rem;
+    border-bottom: var(--rule);
+    background: color-mix(in oklab, var(--color-surface-sunken) 80%, transparent);
+  }
+
+  .frame-bar span[aria-hidden] {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: var(--color-rule);
+  }
+
+  .frame-bar .url {
+    margin-left: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--color-ink-faint);
+  }
+
+  .frame img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  /* The hero shot is deliberately cropped: a full-page dashboard screenshot
+     scaled to fit would be unreadable, so it shows its top and runs out of
+     the bottom of the frame under a fade, which reads as "there is more of
+     this" rather than as a truncation. */
+  .frame.cropped {
+    position: relative;
+    max-height: min(30rem, 58vh);
+  }
+  .frame.cropped::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 8rem;
+    background: linear-gradient(to bottom, transparent, var(--color-surface));
+    pointer-events: none;
+  }
+
+  .shots {
+    display: grid;
+    gap: 1.25rem;
+    margin-top: 2.5rem;
+  }
+  @media (min-width: 60rem) {
+    .shots {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  .shot figcaption {
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    color: var(--color-ink-faint);
+  }
+
+  /* --------------------------------------------------------------- ledger */
+
+  .ledger {
+    display: grid;
+    gap: 0;
+    margin-top: 2.5rem;
+    border: var(--rule);
+    border-radius: 0.9rem;
+    overflow: hidden;
+    background: var(--color-surface-raised);
+  }
+  @media (min-width: 54rem) {
+    .ledger {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  .ledger > div {
+    padding: clamp(1.5rem, 3vw, 2.25rem);
+  }
+
+  .ledger > div + div {
+    border-top: var(--rule);
+  }
+  @media (min-width: 54rem) {
+    .ledger > div + div {
+      border-top: 0;
+      border-left: var(--rule);
+    }
+  }
+
+  .ledger h3 {
+    font-size: 1.15rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .ledger p.note {
+    color: var(--color-ink-faint);
+    font-size: 0.85rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .ledger ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    font-size: 0.95rem;
+  }
+
+  .ledger li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.65rem;
+    color: var(--color-ink-muted);
+  }
+
+  .ledger li::before {
+    content: "+";
+    color: var(--color-good);
+    font-weight: 600;
+    font-size: 0.9em;
+  }
+
+  /* The "never recorded" column is struck through in ink, because a list of
+     things that are absent is otherwise indistinguishable from a list of
+     things that are present. */
+  .ledger .never li::before {
+    content: "×";
+    color: var(--color-critical);
+  }
+
+  .ledger .never li span {
+    text-decoration: line-through;
+    text-decoration-color: color-mix(in oklab, var(--color-critical) 60%, transparent);
+    text-decoration-thickness: 1px;
+  }
+
+  /* ----------------------------------------------------------- hash demo */
+
+  .hash {
+    display: grid;
+    gap: 1.5rem;
+    margin-top: 2.5rem;
+    align-items: center;
+  }
+  @media (min-width: 62rem) {
+    .hash {
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 3rem;
+    }
+  }
+
+  .hash-card {
+    margin: 0;
+    border: var(--rule);
+    border-radius: 0.9rem;
+    background: var(--color-surface-raised);
+    padding: clamp(1.25rem, 3vw, 2rem);
+    font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+    font-size: 0.82rem;
+    line-height: 1.9;
+  }
+
+  .hash-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    color: var(--color-ink-faint);
+  }
+
+  .hash-row + .hash-row {
+    border-top: 1px dashed var(--color-rule);
+    padding-top: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .hash-row b {
+    color: var(--color-ink);
+    font-weight: 500;
+  }
+
+  /* The two inputs that are hashed and thrown away, marked as such: struck
+     value, and a small tag so the strike is not the only signal (it would be
+     invisible to a screen reader and ambiguous in a monochrome print). */
+  .hash-row.discarded s {
+    text-decoration-color: color-mix(in oklab, var(--color-critical) 70%, transparent);
+    color: var(--color-ink-muted);
+  }
+
+  .hash-row.discarded i {
+    font-style: normal;
+    font-size: 0.85em;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-critical);
+  }
+
+  .hash-out {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: var(--rule);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 0.75rem;
+  }
+
+  .hash-out output {
+    font-size: 1.02rem;
+    color: var(--color-accent);
+    letter-spacing: 0.02em;
+    word-break: break-all;
+  }
+
+  .hash-clock {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+  }
+
+  /* ---------------------------------------------------------------- cards */
+
+  .cards {
+    display: grid;
+    gap: 1px;
+    margin-top: 2.5rem;
+    border: var(--rule);
+    border-radius: 0.9rem;
+    overflow: hidden;
+    /* One-pixel gaps over a rule-coloured background draw the grid's
+       dividers, so no card needs a border of its own and none of them
+       double up. */
+    background: var(--color-rule);
+  }
+  @media (min-width: 44rem) {
+    .cards {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (min-width: 68rem) {
+    .cards {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  .card {
+    padding: clamp(1.35rem, 2.5vw, 1.85rem);
+    background: var(--color-surface-raised);
+  }
+
+  .card h3 {
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    margin-bottom: 0.5rem;
+  }
+
+  .card p {
+    color: var(--color-ink-muted);
+    font-size: 0.92rem;
+  }
+
+  .card .glyph {
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    margin-bottom: 0.9rem;
+    border-radius: 0.55rem;
+    background: color-mix(in oklab, var(--color-accent) 16%, transparent);
+    color: var(--color-accent);
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  /* ----------------------------------------------------------- self-host */
+
+  .install {
+    display: grid;
+    gap: 2rem;
+    margin-top: 2.5rem;
+    /* Without this the terminal stretches to the height of the four steps
+       beside it and ends in a tall panel of nothing. */
+    align-items: start;
+  }
+  @media (min-width: 62rem) {
+    .install {
+      grid-template-columns: 0.9fr 1.1fr;
+      gap: 3rem;
+    }
+  }
+
+  .terminal {
+    border: var(--rule);
+    border-radius: 0.9rem;
+    overflow: hidden;
+    background: var(--color-surface-sunken);
+  }
+
+  .terminal pre {
+    margin: 0;
+    padding: 1.25rem;
+    overflow-x: auto;
+    font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+    font-size: 0.82rem;
+    line-height: 1.85;
+    color: var(--color-ink);
+  }
+
+  .terminal .prompt {
+    color: var(--color-accent);
+    user-select: none;
+  }
+
+  .terminal .comment {
+    color: var(--color-ink-faint);
+  }
+
+  .steps {
+    list-style: none;
+    counter-reset: step;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.35rem;
+  }
+
+  .steps li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 1.9rem 1fr;
+    gap: 0.9rem;
+    align-items: start;
+  }
+
+  .steps li::before {
+    content: counter(step, decimal-leading-zero);
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+    color: var(--color-accent);
+    border: var(--rule);
+    border-radius: 0.4rem;
+    text-align: center;
+    padding-block: 0.15rem;
+  }
+
+  .steps strong {
+    display: block;
+    font-weight: 600;
+  }
+
+  .steps p {
+    color: var(--color-ink-muted);
+    font-size: 0.92rem;
+  }
+
+  /* --------------------------------------------------------------- proof */
+
+  .proof {
+    display: grid;
+    gap: 1px;
+    margin-top: 2.5rem;
+    background: var(--color-rule);
+    border: var(--rule);
+    border-radius: 0.9rem;
+    overflow: hidden;
+  }
+  @media (min-width: 44rem) {
+    .proof {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (min-width: 68rem) {
+    .proof {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+
+  .proof div {
+    background: var(--color-surface-raised);
+    padding: 1.5rem;
+  }
+
+  .proof dt {
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+  }
+
+  .proof dd {
+    margin: 0.4rem 0 0;
+    font-family: var(--font-display);
+    font-size: clamp(1.85rem, 1.4rem + 1.4vw, 2.5rem);
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+
+  /* The second `<dd>` in each group is the sentence under the number — a
+     `<dd>` rather than a `<p>` because a `<dl>`'s `<div>` may only group
+     `<dt>` and `<dd>`. See the comment in `index.html`. */
+  .proof dd.gloss {
+    margin-top: 0.5rem;
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    letter-spacing: 0;
+    color: var(--color-ink-muted);
+  }
+
+  /* -------------------------------------------------------- free and open */
+
+  .closing {
+    display: grid;
+    gap: 2rem;
+    align-items: start;
+  }
+  @media (min-width: 62rem) {
+    .closing {
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 4rem;
+    }
+  }
+
+  .closing h2 {
+    font-size: clamp(2rem, 1.4rem + 2.4vw, 3.25rem);
+  }
+
+  .licence {
+    border: var(--rule);
+    border-radius: 0.9rem;
+    padding: 1.5rem;
+    background: var(--color-surface-raised);
+    font-size: 0.9rem;
+    color: var(--color-ink-muted);
+  }
+
+  .licence dl {
+    margin: 0;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.5rem 1rem;
+  }
+
+  .licence dt {
+    color: var(--color-ink-faint);
+  }
+
+  .licence dd {
+    margin: 0;
+    color: var(--color-ink);
+  }
+
+  /* ------------------------------------------------------------- colophon */
+
+  .colophon {
+    border-top: var(--rule);
+    padding: 2.5rem var(--gutter) 3.5rem;
+    font-size: 0.86rem;
+    color: var(--color-ink-faint);
+  }
+
+  .colophon > div {
+    max-width: var(--wide);
+    margin-inline: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 2rem;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .colophon nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+  }
+
+  /* Scoped to the footer's own nav rather than written as `.colophon a`:
+     that shorter form has lower specificity than `.masthead nav a:hover`
+     further up the file while matching the same kind of element, which is
+     the descending-specificity trap the linter exists to catch. */
+  .colophon nav a {
+    color: var(--color-ink-muted);
+    text-decoration-color: var(--color-rule);
+    text-underline-offset: 3px;
+  }
+  .colophon nav a:hover {
+    color: var(--color-ink);
+  }
+
+  /* --------------------------------------------------------------- motion */
+
+  /**
+   * One orchestrated entrance, and only for readers who have not asked for
+   * less motion.
+   *
+   * The `.js` gate is what keeps this honest: the rule that hides content
+   * only applies once the page's own script has confirmed it is running, so
+   * with JavaScript disabled — or before the module loads — every section is
+   * simply visible. A reveal animation that can leave the page blank is a
+   * bug, not a flourish.
+   */
+  .js .reveal {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  .js .reveal.shown {
+    animation: rise 620ms cubic-bezier(0.16, 0.84, 0.36, 1) forwards;
+  }
+
+  @keyframes rise {
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .js .reveal,
+    .js .reveal.shown {
+      opacity: 1;
+      transform: none;
+      animation: none;
+    }
+    .button:hover {
+      transform: none;
+    }
+  }
+}

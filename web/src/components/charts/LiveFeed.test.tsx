@@ -52,6 +52,22 @@ describe("LiveFeed", () => {
     });
   });
 
+  /**
+   * The list is bounded and scrolls (fifty unbounded rows made the panel
+   * thousands of pixels tall), and a scrollable region whose rows contain no
+   * focusable element has to be focusable itself or a keyboard user cannot
+   * scroll it — axe's `scrollable-region-focusable`, WCAG 2.1.1. jsdom cannot
+   * see the height; it can see the focus stop and the name that a focus stop
+   * needs, which is the half of the contract that lives in the markup.
+   * `e2e/panel-heights.spec.ts` checks the other half in a real browser.
+   */
+  it("is a named keyboard focus stop, because it is a scrollable region", async () => {
+    stub({ clicks: [CLICK] });
+    renderFeed();
+    const list = await screen.findByRole("list", { name: "Recent clicks" });
+    expect(list).toHaveAttribute("tabindex", "0");
+  });
+
   it("lists a recent click with its timestamp, country, device, channel and outcome", async () => {
     stub({ clicks: [CLICK] });
     renderFeed();

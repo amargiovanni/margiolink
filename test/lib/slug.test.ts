@@ -40,8 +40,13 @@ describe("isValidSlugShape", () => {
   );
 });
 
+/** Two of these — `app` and `index` — name real files in `web/dist`, and
+ *  Cloudflare's asset router answers a matching path with the file before the
+ *  Worker runs. A link on either slug would serve a page instead of
+ *  redirecting, with no request reaching any code that could explain why, so
+ *  the documents the build produces and this list have to stay in step. */
 describe("isReservedSlug", () => {
-  it.each(["app", "api", "privacy", "assets", "robots.txt", "favicon.ico", "_health"])(
+  it.each(["app", "index", "api", "privacy", "assets", "robots.txt", "favicon.ico", "_health"])(
     "reserves %s",
     (slug) => {
       expect(isReservedSlug(slug)).toBe(true);

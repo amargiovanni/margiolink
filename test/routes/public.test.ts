@@ -46,6 +46,17 @@ describe("GET /robots.txt", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("Disallow: /");
   });
+
+  /** The root stopped being "nothing" when the landing page landed there
+   *  (`web/index.html`), and it is the one path on this host worth indexing.
+   *  `Allow: /$` matches the root and nothing under it; the broader
+   *  `Disallow: /` still covers every short link, because the longest
+   *  matching rule wins. */
+  it("lets the landing page itself be indexed", async () => {
+    const body = await (await SELF.fetch("https://link.test/robots.txt")).text();
+    expect(body).toContain("Allow: /$");
+    expect(body.indexOf("Allow: /$")).toBeLessThan(body.indexOf("Disallow: /"));
+  });
 });
 
 describe("GET /.well-known/security.txt", () => {

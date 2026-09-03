@@ -3,11 +3,526 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content="noindex" />
-    <title>MargioLink</title>
+    <title>MargioLink — link analytics that never store an IP address</title>
+    <meta
+      name="description"
+      content="A free, open-source URL shortener with rich click analytics — country, device, channel, campaign, hour — that never stores an IP address and sets no tracking cookie. One Cloudflare Worker, one D1 database, MIT licensed."
+    />
+    <meta name="theme-color" content="#12100e" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="MargioLink — analytics that never learn who you are" />
+    <meta
+      property="og:description"
+      content="Short links with real click analytics and no IP address, ever. Self-hosted on Cloudflare Workers and D1. MIT licensed."
+    />
+
+    <!--
+      Blocking, inline and deliberately not a module: it has to stamp the
+      theme on <html> before the first paint, or a reader who chose light
+      gets a flash of the dark page on every navigation. It is the same
+      `margiolink:theme` key the dashboard writes (web/src/lib/theme.ts), so
+      a choice made in one carries into the other.
+    -->
+    <script>
+      try {
+        const stored = localStorage.getItem("margiolink:theme");
+        if (stored === "dark" || stored === "light") {
+          document.documentElement.setAttribute("data-theme", stored);
+        }
+      } catch {
+        /* Private window, blocked storage: the OS preference decides. */
+      }
+
+      // Marks the document as scripted so the reveal animations can start
+      // from hidden without a flash of unstyled content — and takes the mark
+      // back off if the module never arrives, because a page left blank by a
+      // failed animation script is a broken page, not a subtle one.
+      document.documentElement.classList.add("js");
+      setTimeout(() => {
+        if (!window.__margiolinkLanding) document.documentElement.classList.remove("js");
+      }, 3000);
+    </script>
   </head>
+
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <div class="atmosphere" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+
+    <header class="masthead">
+      <a class="wordmark" href="/">
+        <span class="mark" aria-hidden="true">↳</span>
+        MargioLink
+      </a>
+
+      <nav aria-label="Sections">
+        <a class="desk-only" href="#record">Privacy</a>
+        <a class="desk-only" href="#dashboard">Dashboard</a>
+        <a class="desk-only" href="#run">Self-host</a>
+        <!--
+          The visible word is the theme in force, and the accessible name
+          starts with that same word — WCAG 2.5.3 wants what a reader says
+          out loud to be a prefix of what a screen reader announces, which an
+          `aria-label` of "Theme" over a visible "Dark" would not be.
+          Hidden until the script runs: a toggle that cannot toggle is worse
+          than no toggle, and without JavaScript the OS preference already
+          decides correctly.
+        -->
+        <button type="button" id="theme-toggle" class="pill" hidden>
+          <span aria-hidden="true" data-theme-glyph>☾</span>
+          <span data-theme-label>Dark</span>
+          <span class="sr-only">&nbsp;theme — switch</span>
+        </button>
+        <a class="button" href="https://github.com/amargiovanni/margiolink">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <!-- ------------------------------------------------------------ hero -->
+      <section class="band hero">
+        <div>
+          <span class="pill">
+            <span class="dot" aria-hidden="true"></span>
+            Free and open source · MIT
+          </span>
+
+          <h1>Count the click, <em>not the person</em>.</h1>
+
+          <p class="lede">
+            MargioLink is a URL shortener with the analytics you actually wanted — country, city,
+            device, browser, channel, campaign, hour of the day — and none of the surveillance you
+            didn't. No IP address is stored, in any form. No tracking cookie is set. No visitor can
+            be followed from one day into the next, by us or by anyone who takes the database.
+          </p>
+
+          <div class="hero-actions">
+            <a class="button" href="#run">Run your own</a>
+            <a class="button ghost" href="https://github.com/amargiovanni/margiolink"
+              >Read the source</a
+            >
+          </div>
+
+          <div class="hero-facts">
+            <span class="pill">One Cloudflare Worker</span>
+            <span class="pill">One D1 database</span>
+            <span class="pill">No third-party requests</span>
+            <span class="pill">GDPR by design</span>
+          </div>
+        </div>
+
+        <div style="margin-top: clamp(2.5rem, 6vw, 4.5rem)">
+          <figure class="frame cropped reveal" style="margin: 0">
+            <div class="frame-bar">
+              <span aria-hidden="true"></span>
+              <span aria-hidden="true"></span>
+              <span aria-hidden="true"></span>
+              <span class="url">link.example.com/app</span>
+            </div>
+            <img
+              src="../docs/screenshots/overview-dark.jpg"
+              alt="The MargioLink overview: clicks and unique visitors over ninety days, top links, a world map, device and channel breakdowns, and an hour-by-weekday heatmap."
+              width="2880"
+              height="4634"
+              fetchpriority="high"
+            />
+          </figure>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------- record -->
+      <section class="band section" id="record">
+        <div>
+          <p class="label" data-index="01">The record</p>
+          <h2 style="font-size: clamp(1.9rem, 1.4rem + 2vw, 3rem); max-width: 20ch">
+            Everything a click writes down, and everything it never does.
+          </h2>
+          <p class="lede" style="margin-top: 1.25rem">
+            Both columns are enforced by the schema and by tests, not by a promise in a footer. The
+            right-hand column is the interesting one: those fields do not exist in the database,
+            so there is nothing to leak, subpoena, or change our minds about later.
+          </p>
+
+          <div class="ledger">
+            <div>
+              <h3>Recorded</h3>
+              <p class="note">Fifteen dimensions, all of them about the request.</p>
+              <ul>
+                <li><span>Time, to the second</span></li>
+                <li><span>Country, region, city, time zone</span></li>
+                <li><span>Cloudflare datacenter and network operator</span></li>
+                <li><span>Device type, operating system, browser</span></li>
+                <li><span>Preferred language</span></li>
+                <li><span>Referring site and channel</span></li>
+                <li><span>UTM source, medium, campaign, term, content</span></li>
+                <li><span>Scan or click, and how the request was answered</span></li>
+              </ul>
+            </div>
+
+            <div class="never">
+              <h3>Never recorded</h3>
+              <p class="note">No column exists for any of these.</p>
+              <ul>
+                <li><span>Your IP address, raw or hashed at rest</span></li>
+                <li><span>Your full user-agent string</span></li>
+                <li><span>A tracking cookie</span></li>
+                <li><span>An identifier that outlives the UTC day</span></li>
+                <li><span>The path or query of the page that referred you</span></li>
+                <li><span>A profile, a score, or a decision about you</span></li>
+                <li><span>A request to any third party, ever</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- -------------------------------------------------------- rotation -->
+      <section class="band section" id="rotation">
+        <div>
+          <p class="label" data-index="02">The rotation</p>
+
+          <div class="hash">
+            <div>
+              <h2 style="font-size: clamp(1.9rem, 1.4rem + 2vw, 3rem)">
+                One visitor, one day, one code that expires.
+              </h2>
+              <p class="lede" style="margin-top: 1.25rem">
+                To tell two visitors apart without knowing either of them, MargioLink derives a
+                short code from the request, keyed to today's date. The key changes at midnight
+                UTC and the old one is never kept, so the same person arriving tomorrow is a
+                stranger again.
+              </p>
+              <p class="lede" style="margin-top: 1rem">
+                That is the whole trick, and it is also the whole limit: unique visitors are
+                counted per day and never across days, because the design that protects the
+                visitor is the same design that refuses to answer the question.
+              </p>
+              <p style="margin-top: 1.5rem">
+                <a class="button ghost" href="/privacy">Read the privacy notice</a>
+              </p>
+            </div>
+
+            <!--
+              A `<figure>` rather than a `<div>` with an `aria-label`: a plain
+              `<div>` has no role, and ARIA naming on a roleless element is
+              ignored by some assistive technology and flagged by the linter.
+              The caption carries the name instead, and the figure is what it
+              is — an illustration beside the prose.
+            -->
+            <figure class="hash-card reveal">
+              <figcaption class="sr-only">How a visitor code is derived</figcaption>
+              <!--
+                The first two rows are the point of the figure: they go into
+                the hash and nowhere else. Marked as discarded rather than
+                left looking like two more stored columns.
+              -->
+              <div class="hash-row discarded">
+                <span>ip</span>
+                <b><s>203.0.113.42</s> <i>discarded</i></b>
+              </div>
+              <div class="hash-row discarded">
+                <span>user-agent</span>
+                <b><s>Mozilla/5.0 (Macintosh…)</s> <i>discarded</i></b>
+              </div>
+              <div class="hash-row"><span>slug</span><b>/launch</b></div>
+              <div class="hash-row">
+                <span>daily key</span><b data-hash-day>secret : 2026-09-03</b>
+              </div>
+
+              <div class="hash-out">
+                <span style="color: var(--color-ink-faint)">visitor</span>
+                <output data-hash-code>9f2c41e0b7a3d58e</output>
+              </div>
+
+              <p class="hash-clock" style="margin-top: 1rem">
+                <span class="dot" aria-hidden="true"></span>
+                <span data-hash-note>Rotates at 00:00 UTC</span>
+              </p>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------------- dashboard -->
+      <section class="band section" id="dashboard">
+        <div>
+          <p class="label" data-index="03">The dashboard</p>
+          <h2 style="font-size: clamp(1.9rem, 1.4rem + 2vw, 3rem); max-width: 22ch">
+            A real analytics app, not a table of counters.
+          </h2>
+          <p class="lede" style="margin-top: 1.25rem">
+            Served by the same Worker at <code>/app</code>. Type, icons and the map's own topology
+            all ship in the build, so the dashboard makes no request to anyone else either. Every
+            chart has a table view, every control is keyboard-operable, and the whole thing is
+            built to WCAG 2.2 AA.
+          </p>
+
+          <div class="shots">
+            <figure class="shot reveal" style="margin: 0">
+              <div class="frame">
+                <img
+                  src="../docs/screenshots/links-dark.png"
+                  alt="The links list: search, status and tag filters, a seven-day sparkline on every row, and one-tap copy."
+                  width="2880"
+                  height="1800"
+                  loading="lazy"
+                />
+              </div>
+              <figcaption>
+                Links — instant search, tag and status filters, a sparkline per row, ⌘K from
+                anywhere.
+              </figcaption>
+            </figure>
+
+            <figure class="shot reveal" style="margin: 0">
+              <div class="frame">
+                <img
+                  src="../docs/screenshots/link-detail-dark.png"
+                  alt="A single link's detail page: clicks, unique visitors, scans and bot share, with the click history charted over ninety days."
+                  width="2880"
+                  height="1800"
+                  loading="lazy"
+                />
+              </div>
+              <figcaption>
+                Per link — every dimension as a ranked list, an hour-by-weekday heatmap, a live
+                feed and the QR code.
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------- what -->
+      <section class="band section" id="features">
+        <div>
+          <p class="label" data-index="04">What it does</p>
+
+          <div class="cards">
+            <article class="card">
+              <span class="glyph" aria-hidden="true">↳</span>
+              <h3>Links that behave</h3>
+              <p>
+                Custom or generated slugs, a password gate, an expiry with its own destination, an
+                off switch, tags, and a soft delete you can undo.
+              </p>
+            </article>
+
+            <article class="card">
+              <span class="glyph" aria-hidden="true">◷</span>
+              <h3>Fast redirects</h3>
+              <p>
+                One D1 lookup at the edge, then a 302. Recording the click happens after the
+                response is on its way, so measurement never costs the visitor a millisecond.
+              </p>
+            </article>
+
+            <article class="card">
+              <span class="glyph" aria-hidden="true">▦</span>
+              <h3>Fifteen dimensions</h3>
+              <p>
+                Country, city, device, OS, browser, language, network, referrer, channel, three
+                UTM fields, weekday × hour, scan-or-click, and outcome.
+              </p>
+            </article>
+
+            <article class="card">
+              <span class="glyph" aria-hidden="true">▢</span>
+              <h3>QR codes that count</h3>
+              <p>
+                Download as SVG or PNG. A scan carries its own marker, so the poster and the
+                newsletter never end up in the same bucket.
+              </p>
+            </article>
+
+            <article class="card">
+              <span class="glyph" aria-hidden="true">⇩</span>
+              <h3>Your data, exportable</h3>
+              <p>
+                CSV straight from the dashboard, a documented JSON API, and a database you own.
+                Nothing here is a hostage.
+              </p>
+            </article>
+
+            <article class="card">
+              <span class="glyph" aria-hidden="true">⏻</span>
+              <h3>It forgets on schedule</h3>
+              <p>
+                Hourly rollups, a nightly job that deletes raw rows past the retention window, and
+                aggregates that identify nobody kept after.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------------------- run -->
+      <section class="band section" id="run">
+        <div>
+          <p class="label" data-index="05">Run your own</p>
+          <h2 style="font-size: clamp(1.9rem, 1.4rem + 2vw, 3rem); max-width: 20ch">
+            Five minutes, your Cloudflare account, no bill.
+          </h2>
+          <p class="lede" style="margin-top: 1.25rem">
+            There is no hosted version to sign up for and no plan to outgrow. You deploy it, you
+            hold the database, and on Cloudflare's free tier a personal or small-team shortener
+            costs nothing to run.
+          </p>
+
+          <div class="install">
+            <div class="terminal reveal">
+              <pre><code><span class="comment"># clone, install, create the database</span>
+<span class="prompt">$</span> git clone https://github.com/amargiovanni/margiolink
+<span class="prompt">$</span> cd margiolink &amp;&amp; npm ci
+<span class="prompt">$</span> npx wrangler d1 create margiolink
+
+<span class="comment"># put the id in wrangler.jsonc, then</span>
+<span class="prompt">$</span> npm run db:migrate
+<span class="prompt">$</span> npx wrangler secret put HASH_SECRET
+<span class="prompt">$</span> npm run deploy</code></pre>
+            </div>
+
+            <ol class="steps">
+              <li>
+                <div>
+                  <strong>Bring your own domain</strong>
+                  <p>
+                    Point a hostname at the Worker as a custom domain and wrangler creates the DNS
+                    record and the certificate for you.
+                  </p>
+                </div>
+              </li>
+              <li>
+                <div>
+                  <strong>Set three secrets</strong>
+                  <p>
+                    An admin username and password, and a hashing secret of at least 32 characters.
+                    A missing hashing secret fails closed — the redirect refuses rather than
+                    quietly recording reproducible visitor codes.
+                  </p>
+                </div>
+              </li>
+              <li>
+                <div>
+                  <strong>Seed a demo, or start empty</strong>
+                  <p>
+                    <code>npm run db:seed:demo</code> fills a local database with six months of
+                    plausible traffic, so you can see every chart working before your first real
+                    click.
+                  </p>
+                </div>
+              </li>
+              <li>
+                <div>
+                  <strong>Keep it current</strong>
+                  <p>
+                    Migrations are reversible and verified in CI, so pulling a new version is a
+                    <code>git pull</code> and a deploy rather than an evening.
+                  </p>
+                </div>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------- closing -->
+      <section class="band section" id="open">
+        <div>
+          <p class="label" data-index="06">Free, and open</p>
+
+          <!--
+            Two `<dd>`s per `<dt>`, not a `<dd>` and a `<p>`: a `<div>` inside
+            a `<dl>` may group `<dt>`/`<dd>` and nothing else, and a stray
+            `<p>` there is an axe `definition-list` violation — which is how
+            this was found, from `e2e/landing.spec.ts`.
+          -->
+          <dl class="proof">
+            <div>
+              <dt>Licence</dt>
+              <dd>MIT</dd>
+              <dd class="gloss">Use it commercially, fork it, rebrand it. No clause waiting for you.</dd>
+            </div>
+            <div>
+              <dt>Tests</dt>
+              <!--
+                Deliberately "700+" rather than a figure: an exact count on a
+                marketing page is a number that goes stale on the next pull
+                request and nothing fails when it does. The README carries the
+                precise split, next to the command that prints it.
+              -->
+              <dd>700+</dd>
+              <dd class="gloss">
+                Inside workerd against a real D1, in a DOM, and end-to-end in a real Chromium.
+              </dd>
+            </div>
+            <div>
+              <dt>Third parties</dt>
+              <dd>0</dd>
+              <dd class="gloss">No CDN, no font host, no analytics on the analytics.</dd>
+            </div>
+            <div>
+              <dt>Moving parts</dt>
+              <dd>2</dd>
+              <dd class="gloss">A Worker and a D1 database. Nothing else to operate.</dd>
+            </div>
+          </dl>
+
+          <div class="closing" style="margin-top: clamp(3rem, 6vw, 4.5rem)">
+            <div>
+              <h2>Built to be read, not just used.</h2>
+              <p class="lede" style="margin-top: 1.25rem">
+                The whole backend is a few thousand lines of TypeScript with no ORM, no framework
+                beyond a router, and no service to sign up for. The privacy notice, the data map,
+                the legal basis and the accessibility sweep are all in the repository, versioned
+                with the code that has to honour them — because a privacy claim you cannot check
+                is just marketing.
+              </p>
+              <div class="hero-actions">
+                <a class="button" href="https://github.com/amargiovanni/margiolink">
+                  Star it on GitHub
+                </a>
+                <a
+                  class="button ghost"
+                  href="https://github.com/amargiovanni/margiolink/blob/main/CONTRIBUTING.md"
+                >
+                  Contribute
+                </a>
+              </div>
+            </div>
+
+            <div class="licence">
+              <dl>
+                <dt>Stack</dt>
+                <dd>Cloudflare Workers · D1 · Hono · React&nbsp;19 · Tailwind&nbsp;4</dd>
+                <dt>Privacy</dt>
+                <dd>No IP stored · daily-rotating visitor code · 180-day raw retention</dd>
+                <dt>Access</dt>
+                <dd>WCAG 2.2 AA · keyboard throughout · every chart has a table</dd>
+                <dt>Security</dt>
+                <dd>Coordinated disclosure policy · security.txt · reversible migrations</dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="colophon">
+      <div>
+        <p>
+          MargioLink — a URL shortener that counts the click, not the person.<br />
+          MIT licensed. Built on Cloudflare Workers and D1.
+        </p>
+        <nav aria-label="Elsewhere">
+          <a href="https://github.com/amargiovanni/margiolink">Source</a>
+          <a href="/privacy">Privacy notice</a>
+          <a href="/.well-known/security.txt">security.txt</a>
+          <a href="/app">Dashboard</a>
+        </nav>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/landing.ts"></script>
   </body>
 </html>
