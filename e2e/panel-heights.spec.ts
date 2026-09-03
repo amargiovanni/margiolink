@@ -137,11 +137,20 @@ test.describe("the overview", () => {
 
     const topLinks = page.getByRole("region", { name: "Top links" });
     const countries = page.getByRole("region", { name: "Clicks by country" });
-    // Both populated before either is measured: a panel still loading is a
-    // few lines tall, and "the short one is shorter" would then be true of
-    // the wrong thing.
-    await topLinks.getByRole("listitem").first().waitFor();
+    // The tall panel has to have its data before either is measured — a
+    // panel still loading is a few lines tall, and "the short one is
+    // shorter" would then be true of the wrong thing.
+    //
+    // Only the tall one, though. An earlier version waited for a row in
+    // "Top links" too and timed out on CI, where that panel can legitimately
+    // be empty: by the time this spec runs, other specs have deleted and
+    // deactivated the fixtures it ranks. An empty card is a perfectly good
+    // subject here — stretched, it was 828px of empty card — so what this
+    // waits for is that the panel is no longer *loading*, not that it has
+    // rows.
     await countries.locator("[data-bar]").first().waitFor();
+    await page.waitForLoadState("networkidle");
+    await expect(topLinks.getByText("Loading…")).toHaveCount(0);
 
     const [topBox, countryBox] = await boxesOf(page, topLinks, countries);
 
