@@ -27,6 +27,8 @@
     "check:fix": "biome check --write src test scripts web e2e",
     "db:migrate:local": "wrangler d1 migrations apply margiolink --local",
     "db:migrate": "wrangler d1 migrations apply margiolink --remote",
+    "db:seed:demo": "node scripts/seed-demo.mjs",
+    "screenshots": "node scripts/screenshots.mjs",
     "db:rollback:local": "node scripts/rollback.mjs --local",
     "db:rollback": "node scripts/rollback.mjs --remote",
     "db:verify-rollback": "node scripts/verify-rollback.mjs"
