@@ -124,7 +124,15 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
   }
 
   return (
-    <div className="flex flex-col gap-2 border-b border-rule py-3 last:border-b-0 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center sm:gap-4">
+    // Five columns for five cells: identity, sparkline, click count, copy,
+    // actions. It was four, and `sm:contents` below splats four children into
+    // the grid alongside the identity block — so the actions menu overflowed
+    // into an implicit second row, landing in the `minmax(0,1fr)` first
+    // column and rendering as a full-width bar with an ellipsis in the middle
+    // of it under every link. Invisible to the jsdom suite, which has no
+    // layout at all; caught the first time anybody photographed the page
+    // (`npm run screenshots`), and pinned since by `e2e/links-layout.spec.ts`.
+    <div className="flex flex-col gap-2 border-b border-rule py-3 last:border-b-0 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] sm:items-center sm:gap-4">
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <RouterLink
