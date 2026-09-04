@@ -6,9 +6,13 @@ import { LiveFeed } from "../components/charts/LiveFeed";
 import { RankedBars } from "../components/charts/RankedBars";
 import { StatTile } from "../components/charts/StatTile";
 import { TimeSeries } from "../components/charts/TimeSeries";
+import { InsightNav } from "../components/layout/InsightNav";
+import { PageHeader } from "../components/layout/PageHeader";
+import { SectionHeading } from "../components/layout/SectionHeading";
 import { CopyButton } from "../components/links/CopyButton";
 import { QrPanel } from "../components/links/QrPanel";
 import { PeriodPicker } from "../components/PeriodPicker";
+import { Panel } from "../components/ui/Panel";
 import { ApiError } from "../lib/api";
 import { useDimension, useLink, useSummary, useTimeseries } from "../lib/queries";
 import { granularityFor, rangeFor } from "../lib/ranges";
@@ -68,6 +72,7 @@ function DimensionPanel({
     <ChartFrame
       title={title}
       description={description}
+      headingLevel={3}
       table={toTable(title, slices)}
       status={chartStatus(query)}
       errorMessage="Could not load this breakdown."
@@ -79,7 +84,7 @@ function DimensionPanel({
       ) : query.isPending ? (
         <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
       ) : (
-        <RankedBars slices={slices} label={title} />
+        <RankedBars slices={slices} label={title} limit={7} />
       )}
     </ChartFrame>
   );
@@ -163,161 +168,205 @@ export default function LinkDetail() {
   // for a "go back to change it" round trip that costs one navigation on a
   // dashboard, not a reason to duplicate a destructive control.
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-display text-3xl text-ink">{link.slug}</h1>
-          <div className="flex items-center gap-1 text-sm text-ink-muted">
+    <div className="flex flex-col gap-10">
+      <PageHeader
+        eyebrow="Link intelligence"
+        title={link.slug}
+        description={
+          <span className="inline-flex flex-wrap items-center gap-2">
             <span>{link.shortUrl}</span>
             <CopyButton value={link.shortUrl} label={`Copy short link for ${link.slug}`} />
+          </span>
+        }
+        actions={
+          <div className="flex max-w-xl flex-col items-end gap-1">
+            {metaQuery.isError ? (
+              <p role="alert" className="text-xs text-critical">
+                Could not load the retention window. Showing the last 7 days only.
+              </p>
+            ) : metaQuery.isPending ? (
+              <p className="text-xs text-ink-muted">Loading period options…</p>
+            ) : (
+              <>
+                <PeriodPicker value={periodId} onChange={setPeriodId} periods={periods} />
+                {periodNote && <p className="text-right text-xs text-ink-faint">{periodNote}</p>}
+              </>
+            )}
           </div>
-        </div>
+        }
+      />
 
-        <div className="flex flex-col items-end gap-1">
-          {metaQuery.isError ? (
-            <p role="alert" className="text-xs text-critical">
-              Could not load the retention window. Showing the last 7 days only.
+      <InsightNav
+        items={[
+          { id: "performance", label: "Performance" },
+          { id: "audience", label: "Audience" },
+          { id: "acquisition", label: "Acquisition" },
+          { id: "delivery", label: "Delivery" },
+        ]}
+      />
+
+      <section aria-labelledby="performance-heading" className="flex flex-col gap-5">
+        <SectionHeading
+          id="performance"
+          eyebrow="What happened"
+          title="Performance"
+          description="Volume, reach and the rhythm of visits across the selected period."
+        />
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {summaryQuery.isError ? (
+            <p role="alert" className="text-sm text-critical sm:col-span-4">
+              Could not load summary stats.
             </p>
-          ) : metaQuery.isPending ? (
-            <p className="text-xs text-ink-muted">Loading period options…</p>
+          ) : summaryQuery.isPending ? (
+            <p className="text-sm text-ink-muted sm:col-span-4">Loading summary…</p>
           ) : (
             <>
-              <PeriodPicker value={periodId} onChange={setPeriodId} periods={periods} />
-              {periodNote && <p className="text-xs text-ink-faint">{periodNote}</p>}
+              <StatTile
+                featured
+                label="Clicks"
+                value={summaryQuery.data.current.clicks}
+                previous={summaryQuery.data.previous.clicks}
+              />
+              <StatTile
+                label="Unique visitors"
+                value={summaryQuery.data.current.uniques}
+                previous={summaryQuery.data.previous.uniques}
+              />
+              <StatTile
+                label="Bot traffic"
+                value={summaryQuery.data.current.bots}
+                previous={summaryQuery.data.previous.bots}
+              />
+              <StatTile
+                label="Countries reached"
+                value={summaryQuery.data.current.countries}
+                previous={summaryQuery.data.previous.countries}
+              />
             </>
           )}
         </div>
-      </header>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {summaryQuery.isError ? (
-          <p role="alert" className="text-sm text-critical sm:col-span-4">
-            Could not load summary stats.
-          </p>
-        ) : summaryQuery.isPending ? (
-          <p className="text-sm text-ink-muted sm:col-span-4">Loading summary…</p>
-        ) : (
-          <>
-            <StatTile
-              label="Clicks"
-              value={summaryQuery.data.current.clicks}
-              previous={summaryQuery.data.previous.clicks}
-            />
-            <StatTile
-              label="Unique visitors"
-              value={summaryQuery.data.current.uniques}
-              previous={summaryQuery.data.previous.uniques}
-            />
-            <StatTile
-              label="Bot traffic"
-              value={summaryQuery.data.current.bots}
-              previous={summaryQuery.data.previous.bots}
-            />
-            <StatTile
-              label="Countries reached"
-              value={summaryQuery.data.current.countries}
-              previous={summaryQuery.data.previous.countries}
-            />
-          </>
-        )}
-      </div>
+        <ChartFrame
+          title="Clicks over time"
+          headingLevel={3}
+          series={[
+            { label: "Clicks", color: "var(--color-series-1)" },
+            { label: "Uniques", color: "var(--color-series-2)" },
+          ]}
+          table={{
+            columns: ["Bucket", "Clicks", "Uniques"],
+            rows: (timeseriesQuery.data?.buckets ?? []).map((bucket) => [
+              bucket.bucket,
+              bucket.clicks,
+              bucket.uniques,
+            ]),
+          }}
+          status={chartStatus(timeseriesQuery)}
+          errorMessage="Could not load the time series."
+        >
+          {timeseriesQuery.isError ? (
+            <p role="alert" className="py-6 text-center text-sm text-critical">
+              Could not load the time series.
+            </p>
+          ) : timeseriesQuery.isPending ? (
+            <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
+          ) : (
+            <TimeSeries buckets={timeseriesQuery.data.buckets} granularity={granularity} />
+          )}
+        </ChartFrame>
 
-      <ChartFrame
-        title="Clicks over time"
-        series={[
-          { label: "Clicks", color: "var(--color-series-1)" },
-          { label: "Uniques", color: "var(--color-series-2)" },
-        ]}
-        table={{
-          columns: ["Bucket", "Clicks", "Uniques"],
-          rows: (timeseriesQuery.data?.buckets ?? []).map((bucket) => [
-            bucket.bucket,
-            bucket.clicks,
-            bucket.uniques,
-          ]),
-        }}
-        status={chartStatus(timeseriesQuery)}
-        errorMessage="Could not load the time series."
-      >
-        {timeseriesQuery.isError ? (
-          <p role="alert" className="py-6 text-center text-sm text-critical">
-            Could not load the time series.
-          </p>
-        ) : timeseriesQuery.isPending ? (
-          <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
-        ) : (
-          <TimeSeries buckets={timeseriesQuery.data.buckets} granularity={granularity} />
-        )}
-      </ChartFrame>
+        <ChartFrame
+          title="Activity by hour"
+          headingLevel={3}
+          description="Clicks by day of week and hour."
+          table={toTable("Hour", hourlyQuery.data?.slices ?? [])}
+          status={chartStatus(hourlyQuery)}
+          errorMessage="Could not load the heatmap."
+        >
+          {hourlyQuery.isError ? (
+            <p role="alert" className="py-6 text-center text-sm text-critical">
+              Could not load the heatmap.
+            </p>
+          ) : hourlyQuery.isPending ? (
+            <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
+          ) : (
+            <Heatmap slices={hourlyQuery.data.slices} />
+          )}
+        </ChartFrame>
+      </section>
 
-      <ChartFrame
-        title="Activity by hour"
-        description="Clicks by day of week and hour."
-        table={toTable("Hour", hourlyQuery.data?.slices ?? [])}
-        status={chartStatus(hourlyQuery)}
-        errorMessage="Could not load the heatmap."
-      >
-        {hourlyQuery.isError ? (
-          <p role="alert" className="py-6 text-center text-sm text-critical">
-            Could not load the heatmap.
-          </p>
-        ) : hourlyQuery.isPending ? (
-          <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
-        ) : (
-          <Heatmap slices={hourlyQuery.data.slices} />
-        )}
-      </ChartFrame>
-
-      {/* `items-start` — see the same note in `Overview.tsx`. Fourteen ranked
-          lists of wildly different lengths (twenty countries beside two
-          device types) would otherwise every row stretch to its tallest
-          member. */}
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-        <DimensionPanel title="Countries" query={countryQuery} withFlags />
-        <DimensionPanel title="Cities" query={cityQuery} />
-        <DimensionPanel title="Devices" query={deviceQuery} />
-        <DimensionPanel title="Operating systems" query={osQuery} />
-        <DimensionPanel title="Browsers" query={browserQuery} />
-        <DimensionPanel title="Languages" query={languageQuery} />
-        <DimensionPanel title="Networks" query={networkQuery} />
-        <DimensionPanel title="Channels" query={channelQuery} />
-        <DimensionPanel title="Referrers" query={referrerQuery} />
-        <DimensionPanel title="Campaigns" query={campaignQuery} optional />
-        <DimensionPanel title="Sources" query={sourceUtmQuery} optional />
-        <DimensionPanel title="Mediums" query={mediumQuery} optional />
-        <DimensionPanel title="Scans vs clicks" query={scanQuery} />
-        <DimensionPanel
-          title="Outcomes"
-          description="How many hit an expired link or failed a password."
-          query={outcomeQuery}
+      <section aria-labelledby="audience-heading" className="flex flex-col gap-5">
+        <SectionHeading
+          id="audience"
+          eyebrow="Who arrived"
+          title="Audience"
+          description="Geography, devices and software behind the traffic."
         />
-      </div>
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+          <DimensionPanel title="Countries" query={countryQuery} withFlags />
+          <DimensionPanel title="Cities" query={cityQuery} />
+          <DimensionPanel title="Devices" query={deviceQuery} />
+          <DimensionPanel title="Operating systems" query={osQuery} />
+          <DimensionPanel title="Browsers" query={browserQuery} />
+          <DimensionPanel title="Languages" query={languageQuery} />
+        </div>
+      </section>
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-        <section
-          aria-labelledby="live-feed-heading"
-          className="rounded-lg border border-rule bg-surface-raised p-4"
-        >
-          {/* h2, matching ChartFrame's own headings — see the comment there.
-              This section sits as a sibling of the ChartFrame panels above
-              it, at the same level under the page's h1, not nested under
-              one of them. */}
-          <h2 id="live-feed-heading" className="mb-4 font-display text-lg leading-tight">
-            Live feed
-          </h2>
-          <LiveFeed linkId={linkId} />
-        </section>
+      <section aria-labelledby="acquisition-heading" className="flex flex-col gap-5">
+        <SectionHeading
+          id="acquisition"
+          eyebrow="How they found it"
+          title="Acquisition"
+          description="Channels, referrers and campaign attribution in one focused view."
+        />
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+          <DimensionPanel title="Channels" query={channelQuery} />
+          <DimensionPanel title="Referrers" query={referrerQuery} />
+          <DimensionPanel title="Campaigns" query={campaignQuery} optional />
+          <DimensionPanel title="Sources" query={sourceUtmQuery} optional />
+          <DimensionPanel title="Mediums" query={mediumQuery} optional />
+        </div>
+      </section>
 
-        <section
-          aria-labelledby="qr-heading"
-          className="rounded-lg border border-rule bg-surface-raised p-4"
-        >
-          <h2 id="qr-heading" className="mb-4 font-display text-lg leading-tight">
-            QR code
-          </h2>
-          <QrPanel linkId={linkId} slug={link.slug} shortUrl={link.shortUrl} />
-        </section>
-      </div>
+      <section aria-labelledby="delivery-heading" className="flex flex-col gap-5">
+        <SectionHeading
+          id="delivery"
+          eyebrow="What resolved"
+          title="Delivery"
+          description="Networks, scan sources, outcomes and the tools attached to this short link."
+        />
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+          <DimensionPanel title="Networks" query={networkQuery} />
+          <DimensionPanel title="Scans vs clicks" query={scanQuery} />
+          <DimensionPanel
+            title="Outcomes"
+            description="How many hit an expired link or failed a password."
+            query={outcomeQuery}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+          <Panel as="section" aria-labelledby="live-feed-heading" className="p-5 sm:p-6">
+            <h3
+              id="live-feed-heading"
+              className="mb-4 font-display text-xl font-semibold leading-tight tracking-tight"
+            >
+              Live feed
+            </h3>
+            <LiveFeed linkId={linkId} />
+          </Panel>
+
+          <Panel as="section" aria-labelledby="qr-heading" className="p-5 sm:p-6">
+            <h3
+              id="qr-heading"
+              className="mb-4 font-display text-xl font-semibold leading-tight tracking-tight"
+            >
+              QR code
+            </h3>
+            <QrPanel linkId={linkId} slug={link.slug} shortUrl={link.shortUrl} />
+          </Panel>
+        </div>
+      </section>
     </div>
   );
 }

@@ -43,6 +43,15 @@ function renderTags() {
 }
 
 describe("Tags", () => {
+  it("separates creation from the existing tag library", async () => {
+    stub({ "GET /api/tags": { tags: [TAG] } });
+    renderTags();
+    await screen.findByText("spring");
+
+    expect(screen.getByRole("heading", { name: "Create a tag", level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Tag library", level: 2 })).toBeInTheDocument();
+  });
+
   it("lists an existing tag with its colour swatch and its name as text", async () => {
     stub({ "GET /api/tags": { tags: [TAG] } });
     renderTags();

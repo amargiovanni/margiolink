@@ -44,12 +44,22 @@
 
   body {
     margin: 0;
-    background: var(--color-surface);
+    background:
+      radial-gradient(
+        circle at 82% -10%,
+        color-mix(in srgb, var(--color-accent) 9%, transparent),
+        transparent 32rem
+      ),
+      var(--color-surface);
     color: var(--color-ink);
     font-family: var(--font-sans);
     font-size: 15px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-accent) 34%, transparent);
   }
 
   /* Every number that can change is tabular, so digits do not jitter as
@@ -82,5 +92,124 @@
       /* biome-ignore lint/complexity/noImportantStyles: see comment above */
       scroll-behavior: auto !important;
     }
+  }
+}
+
+@layer components {
+  .app-workspace {
+    position: relative;
+    isolation: isolate;
+    background:
+      linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--color-surface-raised) 36%, transparent),
+        transparent 34rem
+      ),
+      var(--color-surface);
+  }
+
+  .app-workspace::before {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    content: "";
+    opacity: 0.34;
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 79px,
+      color-mix(in srgb, var(--color-rule) 42%, transparent) 80px
+    );
+    mask-image: linear-gradient(to bottom, rgb(0 0 0 / 45%), transparent 32rem);
+  }
+
+  .page-enter {
+    animation: page-enter 360ms cubic-bezier(0.2, 0.75, 0.2, 1) both;
+  }
+
+  .page-header {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding-bottom: 0.25rem;
+  }
+
+  .page-eyebrow {
+    margin: 0 0 0.55rem;
+    color: var(--color-accent);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .page-title {
+    margin: 0;
+    max-width: 18ch;
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    font-size: clamp(2.2rem, 5vw, 3.7rem);
+    font-weight: 600;
+    letter-spacing: -0.045em;
+    line-height: 0.96;
+  }
+
+  .page-description {
+    max-width: 46rem;
+    margin: 0.8rem 0 0;
+    color: var(--color-ink-muted);
+    font-size: 0.95rem;
+    line-height: 1.55;
+  }
+
+  .page-actions {
+    display: flex;
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+  }
+
+  .section-heading {
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--color-rule);
+  }
+
+  .editorial-panel {
+    border: 1px solid var(--color-rule);
+    border-radius: 1rem;
+    background: color-mix(in srgb, var(--color-surface-raised) 96%, transparent);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, var(--color-ink) 5%, transparent),
+      0 18px 44px color-mix(in srgb, var(--color-surface-sunken) 24%, transparent);
+  }
+
+  @media (min-width: 640px) {
+    .page-header {
+      flex-direction: row;
+      align-items: flex-end;
+    }
+
+    .page-actions {
+      width: auto;
+      flex-shrink: 0;
+      justify-content: flex-end;
+    }
+  }
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

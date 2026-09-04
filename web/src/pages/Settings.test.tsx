@@ -94,6 +94,24 @@ describe("Settings", () => {
     expect(screen.getByText(/current/i)).toBeInTheDocument();
   });
 
+  it("keeps a long session history in a named keyboard-scrollable list", async () => {
+    stub({
+      ...BASE_ROUTES,
+      "GET /api/auth/sessions": {
+        sessions: Array.from({ length: 10 }, (_, index) => ({
+          ...OTHER_SESSION,
+          id: `sess-${index}`,
+          device: `Browser ${index + 1}`,
+        })),
+      },
+    });
+    renderSettings();
+
+    const list = await screen.findByRole("list", { name: "Active sessions" });
+    expect(list).toHaveAttribute("tabindex", "0");
+    expect(list).toHaveClass("overflow-y-auto");
+  });
+
   it("omits an individual revoke control on the current session", async () => {
     stub(BASE_ROUTES);
     renderSettings();

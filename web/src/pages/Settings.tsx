@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { PageHeader } from "../components/layout/PageHeader";
 import { ConfirmDialog } from "../components/links/ConfirmDialog";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
+import { Panel } from "../components/ui/Panel";
 import { formatRelative } from "../lib/format";
 import type { Link, Meta, SessionRow } from "../lib/queries";
 import {
@@ -95,7 +97,7 @@ function SessionRowItem({ session }: { session: SessionRow }) {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <li className="flex items-center justify-between gap-3 border-b border-rule py-2 last:border-b-0">
+    <li className="flex items-center justify-between gap-3 border-b border-rule px-2 py-4 transition-colors last:border-b-0 hover:bg-surface-soft/60">
       <div className="flex flex-col">
         <span className="flex items-center gap-2 text-sm text-ink">
           {session.device ?? "Unknown device"}
@@ -154,10 +156,17 @@ function SessionsSection() {
 
   return (
     <section aria-labelledby="settings-sessions" className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-4">
-        <h2 id="settings-sessions" className="font-display text-xl text-ink">
-          Sessions
-        </h2>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 id="settings-sessions" className="font-display text-xl text-ink">
+            Sessions
+          </h2>
+          {sessionsQuery.isSuccess ? (
+            <p id="settings-sessions-count" className="mt-1 text-xs text-ink-muted">
+              {sessions.length} active {sessions.length === 1 ? "session" : "sessions"}
+            </p>
+          ) : null}
+        </div>
         <Button
           variant="ghost"
           size="sm"
@@ -186,7 +195,12 @@ function SessionsSection() {
       ) : sessionsQuery.isPending ? (
         <p className="text-sm text-ink-muted">Loading sessions…</p>
       ) : (
-        <ul className="flex flex-col">
+        <ul
+          aria-label="Active sessions"
+          aria-describedby="settings-sessions-count"
+          tabIndex={sessions.length > 6 ? 0 : undefined}
+          className="flex max-h-128 flex-col overflow-y-auto overscroll-contain pr-2"
+        >
           {sessions.map((session) => (
             <SessionRowItem key={session.id} session={session} />
           ))}
@@ -336,10 +350,24 @@ export default function Settings() {
 
   return (
     <div className="flex flex-col gap-8">
-      <h1 className="font-display text-3xl text-ink">Settings</h1>
-      <SessionsSection />
-      <DataSection metaQuery={metaQuery} />
-      <AboutSection metaQuery={metaQuery} />
+      <PageHeader
+        eyebrow="Deployment"
+        title="Settings"
+        description="Control access, inspect data retention and keep deployment facts close at hand."
+      />
+      <div className="grid items-start gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+        <Panel className="p-5 sm:p-6">
+          <SessionsSection />
+        </Panel>
+        <div className="grid gap-4">
+          <Panel className="p-5 sm:p-6">
+            <DataSection metaQuery={metaQuery} />
+          </Panel>
+          <Panel className="p-5 sm:p-6">
+            <AboutSection metaQuery={metaQuery} />
+          </Panel>
+        </div>
+      </div>
     </div>
   );
 }

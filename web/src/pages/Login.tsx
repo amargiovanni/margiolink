@@ -1,14 +1,11 @@
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router";
+import { BrandMark } from "../components/layout/BrandMark";
 import { ApiError } from "../lib/api";
 import { useLogin } from "../lib/queries";
 
-/**
- * The error message deliberately does not distinguish a wrong username from a
- * wrong password — the API compares both in constant time and returns one
- * code either way, so the interface must not hand back what the backend
- * spent effort withholding.
- */
+/** Keep authentication failures deliberately non-specific: the backend does
+ * not reveal which credential was wrong, and neither should its interface. */
 function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.code === "invalid_credentials") return "Those details are incorrect.";
@@ -26,61 +23,90 @@ export default function Login() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    // Basename-relative — see the note in RequireSession.tsx. "/app" here
-    // resolved to `/app/app`, landing a freshly signed-in reader on the
-    // catch-all placeholder instead of the overview.
     login.mutate({ username, password }, { onSuccess: () => navigate("/") });
   }
 
   return (
-    <main className="grid min-h-full place-items-center p-8">
-      <div className="w-full max-w-sm rounded-lg border border-rule bg-surface-raised p-8">
-        <h1 className="font-display text-2xl text-ink">Sign in</h1>
-        <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit}>
-          <fieldset className="flex flex-col gap-4" disabled={login.isPending}>
-            <div className="flex flex-col gap-1">
-              <label htmlFor="username" className="text-sm text-ink-muted">
-                Username
-              </label>
-              <input
-                id="username"
-                name="username"
-                type="text"
-                autoComplete="username"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                className="rounded border border-rule bg-surface px-3 py-2 text-ink"
-                required
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label htmlFor="password" className="text-sm text-ink-muted">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="rounded border border-rule bg-surface px-3 py-2 text-ink"
-                required
-              />
-            </div>
-            {login.isError && (
-              <p role="alert" className="text-sm text-critical">
-                {errorMessage(login.error)}
-              </p>
-            )}
-            <button
-              type="submit"
-              className="rounded bg-accent px-4 py-2 font-medium text-accent-ink"
+    <main className="relative grid min-h-full place-items-center overflow-hidden px-5 py-10 sm:px-8">
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,color-mix(in_srgb,var(--color-accent)_18%,transparent),transparent_28rem),radial-gradient(circle_at_86%_80%,color-mix(in_srgb,var(--color-series-1)_12%,transparent),transparent_34rem)]"
+      />
+      <div className="relative grid w-full max-w-5xl overflow-hidden rounded-3xl border border-rule bg-surface-raised shadow-2xl lg:grid-cols-[1.08fr_0.92fr]">
+        <section className="flex min-h-76 flex-col justify-between bg-rail p-7 text-rail-ink sm:p-10 lg:min-h-150">
+          <BrandMark />
+          <div className="max-w-md py-12">
+            <p className="page-eyebrow text-rail-muted">Private by construction</p>
+            <p className="font-display text-4xl leading-[0.98] font-semibold tracking-[-0.045em] sm:text-5xl">
+              Privacy-first link intelligence.
+            </p>
+            <p className="mt-5 max-w-sm text-sm leading-relaxed text-rail-muted">
+              Short links, useful answers, and no IP address stored along the way.
+            </p>
+          </div>
+          <p className="text-xs text-rail-muted">Your deployment. Your data. No third parties.</p>
+        </section>
+
+        <section className="flex items-center p-7 sm:p-10 lg:p-14" aria-labelledby="login-title">
+          <div className="w-full">
+            <p className="page-eyebrow">Operator access</p>
+            <h1
+              id="login-title"
+              className="font-display text-4xl font-semibold tracking-tight text-ink"
             >
-              {login.isPending ? "Signing in…" : "Sign in"}
-            </button>
-          </fieldset>
-        </form>
+              Sign in
+            </h1>
+            <p className="mt-2 text-sm text-ink-muted">Continue to your MargioLink workspace.</p>
+            <form className="mt-8 flex flex-col gap-5" onSubmit={handleSubmit}>
+              <fieldset className="flex flex-col gap-5" disabled={login.isPending}>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="username" className="text-xs font-semibold text-ink-muted">
+                    Username
+                  </label>
+                  <input
+                    id="username"
+                    name="username"
+                    type="text"
+                    autoComplete="username"
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value)}
+                    className="min-h-12 rounded-xl border border-rule bg-surface px-3.5 py-2 text-ink shadow-inner transition-colors hover:border-rule-strong"
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="password" className="text-xs font-semibold text-ink-muted">
+                    Password
+                  </label>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    className="min-h-12 rounded-xl border border-rule bg-surface px-3.5 py-2 text-ink shadow-inner transition-colors hover:border-rule-strong"
+                    required
+                  />
+                </div>
+                {login.isError && (
+                  <p
+                    role="alert"
+                    className="rounded-xl border border-critical/30 bg-critical/8 px-3 py-2 text-sm text-critical"
+                  >
+                    {errorMessage(login.error)}
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  className="min-h-12 rounded-xl bg-accent px-4 py-2 font-semibold text-accent-ink shadow-[0_10px_28px_color-mix(in_srgb,var(--color-accent)_22%,transparent)] transition-all hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {login.isPending ? "Signing in…" : "Sign in"}
+                </button>
+              </fieldset>
+            </form>
+          </div>
+        </section>
       </div>
     </main>
   );

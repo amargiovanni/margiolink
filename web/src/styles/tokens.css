@@ -6,8 +6,13 @@
 
   --color-surface: #12100e;
   --color-surface-raised: #1a1714;
+  --color-surface-soft: #211c18;
   --color-surface-sunken: #0c0a09;
   --color-rule: #2c2823;
+  --color-rule-strong: #40382f;
+  --color-rail: #0d0b09;
+  --color-rail-ink: #f6f2ea;
+  --color-rail-muted: #a8a094;
   --color-ink: #f6f2ea;
   --color-ink-muted: #a8a094;
   /* Was #6f675c (3.20:1 on #1a1714 surface-raised) — below WCAG AA's 4.5:1
@@ -54,8 +59,13 @@
   :root:not([data-theme="dark"]) {
     --color-surface: #faf7f2;
     --color-surface-raised: #ffffff;
+    --color-surface-soft: #f4eee5;
     --color-surface-sunken: #f1ece3;
     --color-rule: #ddd6c9;
+    --color-rule-strong: #c8bdad;
+    --color-rail: #18130f;
+    --color-rail-ink: #f6f2ea;
+    --color-rail-muted: #b9aea0;
     --color-ink: #1b1814;
     --color-ink-muted: #5f574c;
     /* Was #8c8479 (3.68:1 on #ffffff, 3.45:1 on #faf7f2) — below WCAG AA's
@@ -101,8 +111,13 @@
 :root[data-theme="light"] {
   --color-surface: #faf7f2;
   --color-surface-raised: #ffffff;
+  --color-surface-soft: #f4eee5;
   --color-surface-sunken: #f1ece3;
   --color-rule: #ddd6c9;
+  --color-rule-strong: #c8bdad;
+  --color-rail: #18130f;
+  --color-rail-ink: #f6f2ea;
+  --color-rail-muted: #b9aea0;
   --color-ink: #1b1814;
   --color-ink-muted: #5f574c;
   /* See the comment beside this in the @media block above. */

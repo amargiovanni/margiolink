@@ -19,6 +19,17 @@ function renderLogin() {
 }
 
 describe("Login", () => {
+  it("identifies the product before asking for credentials", () => {
+    renderLogin();
+    expect(screen.getByText("MargioLink")).toBeInTheDocument();
+    expect(screen.getByText(/privacy-first link intelligence/i)).toBeInTheDocument();
+  });
+
+  it("uses a rail-safe colour for the eyebrow on the dark brand panel", () => {
+    renderLogin();
+    expect(screen.getByText("Private by construction")).toHaveClass("text-rail-muted");
+  });
+
   it("labels both fields so they are reachable by name", () => {
     renderLogin();
     expect(screen.getByLabelText(/username/i)).toBeInTheDocument();

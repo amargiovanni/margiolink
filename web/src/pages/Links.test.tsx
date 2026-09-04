@@ -57,6 +57,17 @@ function renderLinks() {
 }
 
 describe("Links", () => {
+  it("reports the populated result scope beside the filters", async () => {
+    stub({
+      "/api/links": LINKS,
+      "/api/tags": { tags: [] },
+      "/api/stats/sparklines": { days: 7, series: {} },
+    });
+    renderLinks();
+
+    expect(await screen.findByText("1 link")).toBeInTheDocument();
+  });
+
   it("lists each link with its slug and destination", async () => {
     stub({
       "/api/links": LINKS,

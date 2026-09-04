@@ -79,6 +79,18 @@ function renderDetail() {
 }
 
 describe("LinkDetail", () => {
+  it("groups dense analytics into navigable insight sections", async () => {
+    stub(DEFAULT_ROUTES);
+    renderDetail();
+    await screen.findByText("demo");
+
+    expect(screen.getByRole("navigation", { name: "Link insights" })).toBeInTheDocument();
+    for (const section of ["Performance", "Audience", "Acquisition", "Delivery"]) {
+      expect(screen.getByRole("heading", { name: section, level: 2 })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("heading", { name: "Countries", level: 3 })).toBeInTheDocument();
+  });
+
   it("shows the link's slug and short URL", async () => {
     stub(DEFAULT_ROUTES);
     renderDetail();
@@ -348,7 +360,7 @@ describe("LinkDetail", () => {
     expect(screen.getByText("Mediums")).toBeInTheDocument();
   });
 
-  it("keeps the fourteen dimension panels in the brief's order", async () => {
+  it("keeps all fourteen dimension panels in their insight-group order", async () => {
     // DEFAULT_ROUTES' dimension stub returns non-empty slices for every
     // name it isn't told otherwise about, so all three UTM panels render
     // here too — this test only means anything if the full set of fourteen
@@ -364,22 +376,21 @@ describe("LinkDetail", () => {
       "Operating systems",
       "Browsers",
       "Languages",
-      "Networks",
       "Channels",
       "Referrers",
       "Campaigns",
       "Sources",
       "Mediums",
+      "Networks",
       "Scans vs clicks",
       "Outcomes",
     ];
 
     await waitFor(() => {
-      // level 2, not 3: ChartFrame's panel headings sit directly under this
-      // page's own h1 with nothing between (Task 14's a11y sweep) — see the
-      // comment on ChartFrame's heading element.
+      // Dimension cards are level 3 because the redesign introduces real
+      // level-2 insight groups between the page title and each chart.
       const headings = screen
-        .getAllByRole("heading", { level: 2 })
+        .getAllByRole("heading", { level: 3 })
         .map((heading) => heading.textContent);
       const panelHeadings = headings.filter((text) => expectedOrder.includes(text ?? ""));
       expect(panelHeadings).toStrictEqual(expectedOrder);

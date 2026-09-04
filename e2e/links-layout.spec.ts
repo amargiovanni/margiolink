@@ -72,3 +72,24 @@ test.describe("the links list row", () => {
     expect(actionsBox.width).toBeLessThan(80);
   });
 });
+
+test.describe("the mobile app chrome", () => {
+  test("keeps brand and creation action above the bottom navigation", async ({
+    authenticatedPage: page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/app");
+
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    const newLink = page.getByRole("link", { name: "New link" });
+    await nav.waitFor();
+
+    const [navBox, actionBox] = await Promise.all([nav.boundingBox(), newLink.boundingBox()]);
+    expect(navBox).not.toBeNull();
+    expect(actionBox).not.toBeNull();
+    if (!navBox || !actionBox) return;
+
+    expect(actionBox.y + actionBox.height).toBeLessThan(navBox.y);
+    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 390);
+  });
+});
