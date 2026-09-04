@@ -2,6 +2,7 @@ import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { requireSession } from "../../src/auth/middleware";
 import { app } from "../../src/index";
+import { securityHeaders } from "../../src/lib/security-headers";
 import { PUBLIC_API_ROUTES } from "../../src/routes/api";
 
 /**
@@ -37,6 +38,7 @@ const EXPECTED_SESSION_MIDDLEWARE_PATHS = [
  */
 const EXPECTED_PUBLIC_NON_API_ROUTES = [
   "GET /_health",
+  "GET /_ready",
   "GET /app",
   "GET /app/*",
   "GET /privacy",
@@ -102,6 +104,7 @@ describe("routes outside /api", () => {
   it("are exactly the ones intended to be public", () => {
     const nonApi = app.routes
       .filter((route) => !route.path.startsWith("/api"))
+      .filter((route) => route.handler !== securityHeaders)
       .map((route) => `${route.method} ${route.path}`);
 
     expect(nonApi.sort()).toEqual([...EXPECTED_PUBLIC_NON_API_ROUTES].sort());

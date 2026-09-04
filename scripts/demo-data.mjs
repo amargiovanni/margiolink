@@ -1018,8 +1018,8 @@ export function generateDemoData({ now, days = 180, seed = 20260903 } = {}) {
           utmSource: utm?.source ?? null,
           utmMedium: utm?.medium ?? null,
           utmCampaign: utm?.campaign ?? null,
-          utmTerm: utm?.term ?? null,
-          utmContent: utm?.content ?? null,
+          utmTerm: null,
+          utmContent: null,
         });
       }
     }

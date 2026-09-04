@@ -68,6 +68,47 @@ export const DIMENSION_COLUMNS: Record<DimensionName, string> = {
   dow_hour: "strftime('%w', ts, 'unixepoch') || '-' || strftime('%H', ts, 'unixepoch')",
 };
 
+const SENSITIVE_DIMENSION_NAMES = [
+  "city",
+  "asn_org",
+  "referrer_host",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+] as const satisfies readonly DimensionName[];
+
+export const SENSITIVE_DIMENSIONS: ReadonlySet<DimensionName> = new Set(SENSITIVE_DIMENSION_NAMES);
+
+const DIMENSION_DELETE_BATCH_SIZE = 5_000;
+const DIMENSION_DELETE_MAX_BATCHES = 100;
+
+export async function deleteSensitiveDimensionsBefore(
+  db: D1Database,
+  day: string,
+  batchSize: number = DIMENSION_DELETE_BATCH_SIZE,
+  maxBatches: number = DIMENSION_DELETE_MAX_BATCHES,
+): Promise<{ deleted: number; capped: boolean }> {
+  const placeholders = SENSITIVE_DIMENSION_NAMES.map(() => "?").join(", ");
+  const statement = db.prepare(
+    `DELETE FROM click_daily_dim
+     WHERE rowid IN (
+       SELECT rowid FROM click_daily_dim
+       WHERE day < ? AND dimension IN (${placeholders})
+       LIMIT ?
+     )`,
+  );
+  let deleted = 0;
+
+  for (let batch = 0; batch < maxBatches; batch++) {
+    const result = await statement.bind(day, ...SENSITIVE_DIMENSION_NAMES, batchSize).run();
+    const changes = result.meta.changes ?? 0;
+    deleted += changes;
+    if (changes < batchSize) return { deleted, capped: false };
+  }
+
+  return { deleted, capped: true };
+}
+
 const BUCKET_EXPRESSIONS: Record<Granularity, string> = {
   hour: "strftime('%Y-%m-%dT%H:00', ts, 'unixepoch')",
   day: "date(ts, 'unixepoch')",

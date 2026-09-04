@@ -1,6 +1,7 @@
 import { deleteStaleLoginAttempts } from "../auth/rate-limit";
 import { deleteClicksBefore, unaggregatedDaysBefore } from "../db/clicks";
 import { deleteExpiredSessions } from "../db/sessions";
+import { deleteSensitiveDimensionsBefore } from "../db/stats";
 
 export interface RetentionResult {
   clicks: number;
@@ -17,6 +18,8 @@ export interface RetentionResult {
    * window — the backlog is not draining in one nightly run.
    */
   clicksCapped: boolean;
+  dimensions: number;
+  dimensionsCapped: boolean;
 }
 
 export async function runRetention(
@@ -35,20 +38,20 @@ export async function runRetention(
     // Logged rather than swallowed: a stuck rollup is otherwise invisible until
     // the dashboard shows a hole, by which time the raw rows would have been
     // deleted under the previous behaviour.
-    console.warn(
-      "retention: declined to delete raw clicks for days with no click_daily row",
-      skippedDays,
-    );
+    console.warn(JSON.stringify({ event: "retention_unaggregated_days", skippedDays }));
   }
 
   const clicks = await deleteClicksBefore(db, cutoff);
   if (clicks.capped) {
     // The next run continues where this one stopped, but a cap reached night
     // after night means the backlog is growing faster than it drains.
-    console.warn(
-      "retention: hit the delete batch cap with raw clicks still past the window",
-      clicks.deleted,
-    );
+    console.warn(JSON.stringify({ event: "retention_click_cap", deleted: clicks.deleted }));
+  }
+
+  const cutoffDay = new Date(cutoff * 1000).toISOString().slice(0, 10);
+  const dimensions = await deleteSensitiveDimensionsBefore(db, cutoffDay);
+  if (dimensions.capped) {
+    console.warn(JSON.stringify({ event: "retention_dimension_cap", deleted: dimensions.deleted }));
   }
 
   return {
@@ -57,5 +60,7 @@ export async function runRetention(
     loginAttempts: await deleteStaleLoginAttempts(db, now),
     skippedDays,
     clicksCapped: clicks.capped,
+    dimensions: dimensions.deleted,
+    dimensionsCapped: dimensions.capped,
   };
 }

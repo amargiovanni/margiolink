@@ -38,7 +38,7 @@ One Worker bound to `link.margio.uk`, serving three surfaces:
 | `/privacy`     | Public privacy notice         | none              |
 
 Reserved slugs, rejected at creation time: `app`, `api`, `privacy`, `assets`,
-`robots.txt`, `favicon.ico`, `_health`. Without this, a link could make the
+`robots.txt`, `favicon.ico`, `_health`, `_ready`. Without this, a link could make the
 dashboard unreachable.
 
 ### 2.1 Redirect path
@@ -80,16 +80,16 @@ This is the reason the simple approach is not a dead end.
 
 ### 2.3 Scheduled work
 
-- **Hourly cron** — roll raw clicks into daily aggregate tables.
+- **Hourly cron** — roll raw clicks into daily aggregate tables, including at
+  most seven oldest complete days missed during an outage.
 - **Daily cron** — delete raw clicks past the retention window; purge expired
   admin sessions and stale login-attempt rows.
 
-Aggregate tables are kept indefinitely: `click_daily` holds a count of clicks/uniques/bots per link per day, and
-`click_daily_dim` holds a count grouped by one dimension's value — a city
-name, a referrer host, a browser name. Both are retained indefinitely, and
-both remain non-personal not because the value is absent but because no
-individual is identifiable in either table: the rows are grouped counts with no
-visitor identifier and no row-per-person structure. `compliance/data-map.md` is the authoritative wording.
+`click_daily` totals and coarse `click_daily_dim` breakdowns are kept
+indefinitely. City, network operator, referrer host, and supported campaign
+dimensions are suppressed below three clicks per link/day and expire after the
+same retention window as raw events. `compliance/data-map.md` is the
+authoritative wording.
 
 ---
 
@@ -138,7 +138,7 @@ clicks (
 
   referrer_host TEXT, referrer_type TEXT,
   utm_source TEXT, utm_medium TEXT, utm_campaign TEXT,
-  utm_term TEXT, utm_content TEXT
+  utm_term TEXT, utm_content TEXT  -- legacy nullable columns; always NULL
 )
 ```
 
@@ -275,12 +275,10 @@ The daily key is derived from a Worker secret and the date; nothing is stored.
 ### 4.3 Minimisation and retention
 
 - Raw `clicks` rows: **180 days**, then deleted by the daily cron.
-- Aggregates: indefinite. `click_daily` holds a count of clicks/uniques/bots per link per day, and
-`click_daily_dim` holds a count grouped by one dimension's value — a city
-name, a referrer host, a browser name. Both are retained indefinitely, and
-both remain non-personal not because the value is absent but because no
-individual is identifiable in either table: the rows are grouped counts with no
-visitor identifier and no row-per-person structure. `compliance/data-map.md` is the authoritative wording.
+- Aggregates: daily totals and coarse dimensions are indefinite. City, network
+  operator, referrer host, and supported campaign dimensions require three
+  clicks per link/day and expire after 180 days. `compliance/data-map.md` is the
+  authoritative wording.
 - City-level geography is the finest granularity kept; latitude/longitude
   available from `request.cf` is deliberately not stored.
 
@@ -291,9 +289,10 @@ record are produced with the `gdpr-evidence` skill during implementation.
 
 ## 5. Security
 
-1. **Login rate limiting** — per-IP-hash counter in D1 with progressive
-   backoff and lockout. Without it, a password in an env var is one brute-force
-   attempt away from compromise on the open internet.
+1. **Login rate limiting** — per-IP-hash counter in D1 with a one-statement
+   atomic attempt reservation, progressive backoff and lockout. Without it, a
+   password in an env var is one brute-force attempt away from compromise on
+   the open internet.
 2. **Session cookie** — `__Host-` prefixed, `HttpOnly`, `Secure`,
    `SameSite=Lax`. Session id hashed at rest; sessions are revocable
    individually or all at once.
@@ -310,12 +309,12 @@ record are produced with the `gdpr-evidence` skill during implementation.
    Workers equivalent of the project's "every authenticated endpoint has a
    Policy" rule.
 7. **Link passwords** — PBKDF2-SHA256 via WebCrypto (bcrypt is unavailable on
-   Workers), per-link salt, 100k iterations. Password submission to
-   `POST /:slug` is throttled on the same `login_attempts` machinery as the
-   admin login, keyed on the daily IP hash **and** the slug so one link's
-   failures cannot lock another out, and answers 429 with `Retry-After` when
-   tripped. Without it the endpoint is an unauthenticated brute-force oracle
-   whose per-attempt cost is 100k PBKDF2 iterations of Worker CPU.
+   Workers), per-link salt, with new hashes encoded as
+   `pbkdf2-sha256$600000$<digest>` and legacy 100k digests still readable.
+   Password submission to `POST /:slug` is throttled on the same atomic
+   `login_attempts` machinery as the admin login, keyed on the daily IP hash
+   **and** the slug so one link's failures cannot lock another out, and answers
+   429 with `Retry-After` before derivation when tripped.
 
 ---
 

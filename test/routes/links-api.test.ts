@@ -97,7 +97,7 @@ describe("POST /api/links", () => {
     const row = await env.DB.prepare("SELECT password_hash FROM links WHERE id = ?")
       .bind(body.link.id)
       .first<{ password_hash: string }>();
-    expect(row?.password_hash).not.toBe("hunter2");
+    expect(row?.password_hash).toMatch(/^pbkdf2-sha256\$600000\$[0-9a-f]{64}$/);
   });
 });
 

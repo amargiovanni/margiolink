@@ -29,11 +29,27 @@ describe("sessions", () => {
     expect(stored?.id).toBe(await sha256Hex(token));
   });
 
-  it("reads back a valid session and refreshes last_seen_at", async () => {
+  it("reads a valid session without touching it inside five minutes", async () => {
     const token = await createSession(env.DB, null, NOW);
     const session = await readSession(env.DB, token, NOW + 100);
     expect(session).not.toBeNull();
-    expect(session?.last_seen_at).toBe(NOW + 100);
+    expect(session?.last_seen_at).toBe(NOW);
+
+    const stored = await env.DB.prepare("SELECT last_seen_at FROM admin_sessions").first<{
+      last_seen_at: number;
+    }>();
+    expect(stored?.last_seen_at).toBe(NOW);
+  });
+
+  it("touches both the returned and stored session after five minutes", async () => {
+    const token = await createSession(env.DB, null, NOW);
+    const session = await readSession(env.DB, token, NOW + 301);
+
+    expect(session?.last_seen_at).toBe(NOW + 301);
+    const stored = await env.DB.prepare("SELECT last_seen_at FROM admin_sessions").first<{
+      last_seen_at: number;
+    }>();
+    expect(stored?.last_seen_at).toBe(NOW + 301);
   });
 
   it("returns null for an unknown token", async () => {

@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { issueLinkToken, verifyLinkToken } from "../auth/link-token";
-import { checkLoginAllowed, clearLoginFailures, registerLoginFailure } from "../auth/rate-limit";
+import { clearLoginFailures, reserveLoginAttempt } from "../auth/rate-limit";
 import { findBySlug, type LinkRow } from "../db/links";
 import { recordClick } from "../ingest/record-click";
 import { ipHash, verifyPassword } from "../lib/crypto";
@@ -75,7 +75,7 @@ function passwordPage(slug: string, error: "wrong" | "throttled" | null): string
      <form method="post" action="/${escapeHtml(slug)}">
        <label for="password">Password</label>
        <input id="password" name="password" type="password" autocomplete="current-password"
-              autofocus required>
+              maxlength="200" autofocus required>
        <button type="submit">Continue</button>
      </form>`,
   );
@@ -170,12 +170,18 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
         recordClick(c.env, { linkId: link.id, slug, outcome: "password_failed", context, now }),
       );
 
-    // This endpoint is unauthenticated and every submission costs 100,000
-    // PBKDF2 iterations of Worker CPU, so it is a brute-force oracle and a CPU
-    // amplification vector at once. The throttle is checked before the
-    // verification, so a locked-out caller costs nothing to answer.
+    const body = await c.req.parseBody();
+    const submitted = typeof body.password === "string" ? body.password : "";
+    if (submitted.length > 200) {
+      recordFailure();
+      return c.html(passwordPage(link.slug, "wrong"), 400);
+    }
+
+    // This endpoint is unauthenticated and every accepted submission performs
+    // an expensive password derivation. Reserving the attempt first makes the
+    // throttle atomic and keeps locked-out callers away from that work.
     const throttleKey = passwordThrottleKey(await ipHash(secret, context.ip, now), slug);
-    const limit = await checkLoginAllowed(c.env.DB, throttleKey, now);
+    const limit = await reserveLoginAttempt(c.env.DB, throttleKey, now);
     if (!limit.allowed) {
       // `password_failed` rather than a new outcome value: the schema's set is
       // consumed by the dashboard, and this is a failed password attempt.
@@ -185,13 +191,9 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
       });
     }
 
-    const body = await c.req.parseBody();
-    const submitted = typeof body.password === "string" ? body.password : "";
-
     const correct = await verifyPassword(submitted, link.password_salt, link.password_hash);
 
     if (!correct) {
-      await registerLoginFailure(c.env.DB, throttleKey, now);
       recordFailure();
       return c.html(passwordPage(link.slug, "wrong"), 401);
     }

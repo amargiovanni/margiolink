@@ -28,7 +28,9 @@ strong { color: var(--fg); }
 and time zone your request was routed from, which datacenter served the
 request, your network operator, the type of device, operating system and
 browser, your preferred language, the site that referred you, and any
-campaign parameters in the link.</p>
+supported campaign labels in the link. Campaign source, medium and name are
+accepted only as short letters/digits labels; free-form term and content
+parameters are not recorded.</p>
 
 <h2>What is not recorded</h2>
 <p><strong>Your IP address is never stored</strong>, in any form, and neither is
@@ -55,7 +57,10 @@ individual.</p>
 
 <h2>How long</h2>
 <p>Individual records are deleted after <strong>${retentionDays} days</strong>.
-Only aggregate counts, which identify nobody, are kept beyond that.</p>
+Daily totals and coarse aggregate counts may be kept beyond that. City, network
+operator, referring host and campaign breakdowns are recorded only when at
+least three clicks share a value for one link and day, and those breakdowns are
+also deleted after <strong>${retentionDays} days</strong>.</p>
 
 <h2>Your rights</h2>
 <p>You have the right to ask what is held about you, to have it corrected or

@@ -1,28 +1,17 @@
 /**
  * Statistics API.
  *
- * Two limits of these responses are not surfaced to a consumer, and the
- * dashboard has to account for both:
+ * Two limits define how consumers must read these responses:
  *
- * 1. **A range extending past the retention window silently under-reports.**
- *    Every endpoint here reads raw `clicks` only. Rows older than
- *    `RAW_RETENTION_DAYS` have been deleted by `src/cron/retention.ts`, so a
- *    query covering them returns a smaller number that looks exactly like a
- *    complete one. The aggregate tables written for this case
- *    (`click_daily`, `click_daily_dim`) are not consulted, and no response
- *    carries a "truncated at" marker.
+ * 1. **A range cannot extend past raw-data retention.** Every endpoint here
+ *    reads raw `clicks` only. Its lower bound is clamped and the response
+ *    carries the requested/effective cutoff in `meta`.
  * 2. **Summed daily `uniques` over-count a returning visitor.** `uniques` is
  *    `COUNT(DISTINCT visitor_hash)`, and the hash rotates at UTC midnight by
  *    design, so a visitor returning on three days counts three times over a
  *    multi-day range — in `summary`, in `dimension`, and in `timeseries` at
  *    day and week granularity. This is the accepted consequence of the privacy
- *    design, not a bug, but the response is a bare integer with no field the
- *    dashboard could hang an honest label on.
- *
- * Both are recorded here rather than fixed because the fix — a `meta` block
- * naming the oldest retained timestamp, whether the range was truncated, and
- * that uniques are daily-distinct — changes the response shape the dashboard
- * will consume, and belongs with the dashboard work that reads it.
+ *    design, not a bug. `meta.uniquesDefinition` makes the semantic explicit.
  */
 
 import { Hono } from "hono";
@@ -34,6 +23,7 @@ import {
   type DimensionName,
   dimension,
   type Granularity,
+  type StatsRange,
   sparklines,
   summary,
   timeseries,
@@ -72,6 +62,42 @@ const dimensionNames = Object.keys(DIMENSION_COLUMNS) as [DimensionName, ...Dime
  *  cap to the one bounded dimension's actual maximum rather than special
  *  -casing `name` in the schema. */
 const DIMENSION_LIMIT_MAX = 168;
+const DAY_SECONDS = 86_400;
+
+export interface StatsMeta {
+  requestedFrom: number;
+  effectiveFrom: number;
+  retentionCutoff: number;
+  truncated: boolean;
+  uniquesDefinition: "daily-rotating-visitor-hash";
+}
+
+export function normaliseStatsRange(
+  range: StatsRange,
+  now: number,
+  retentionDays: number,
+): { range: StatsRange; meta: StatsMeta } {
+  if (!Number.isInteger(retentionDays) || retentionDays <= 0) {
+    throw new Error("RAW_RETENTION_DAYS must be a positive integer");
+  }
+
+  const retentionCutoff = now - retentionDays * DAY_SECONDS;
+  const effectiveFrom = Math.max(range.from, retentionCutoff);
+  return {
+    range: { ...range, from: effectiveFrom },
+    meta: {
+      requestedFrom: range.from,
+      effectiveFrom,
+      retentionCutoff,
+      truncated: effectiveFrom !== range.from,
+      uniquesDefinition: "daily-rotating-visitor-hash",
+    },
+  };
+}
+
+function rangeForEnv(env: Env, range: StatsRange): { range: StatsRange; meta: StatsMeta } {
+  return normaliseStatsRange(range, Math.floor(Date.now() / 1000), Number(env.RAW_RETENTION_DAYS));
+}
 
 export const stats = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
 
@@ -83,13 +109,19 @@ stats.get("/summary", async (c) => {
 
   const { from, to, linkId } = parsed.data;
   const span = to - from;
+  const normalized = rangeForEnv(c.env, parsed.data);
+  const previousRange: StatsRange = {
+    from: Math.max(normalized.meta.retentionCutoff, from - span),
+    to: Math.max(normalized.meta.retentionCutoff, from),
+    ...(linkId === undefined ? {} : { linkId }),
+  };
 
   const [current, previous] = await Promise.all([
-    summary(c.env.DB, { from, to, linkId }),
-    summary(c.env.DB, { from: from - span, to: from, linkId }),
+    summary(c.env.DB, normalized.range),
+    summary(c.env.DB, previousRange),
   ]);
 
-  return c.json({ current, previous, range: { from, to } });
+  return c.json({ current, previous, range: { from, to }, meta: normalized.meta });
 });
 
 stats.get("/timeseries", async (c) => {
@@ -101,8 +133,9 @@ stats.get("/timeseries", async (c) => {
     return c.json({ error: "invalid_granularity" }, 400);
   }
 
-  const buckets = await timeseries(c.env.DB, parsed.data, granularity as Granularity);
-  return c.json({ buckets, granularity });
+  const normalized = rangeForEnv(c.env, parsed.data);
+  const buckets = await timeseries(c.env.DB, normalized.range, granularity as Granularity);
+  return c.json({ buckets, granularity, meta: normalized.meta });
 });
 
 stats.get("/dimension", async (c) => {
@@ -120,8 +153,9 @@ stats.get("/dimension", async (c) => {
     .safeParse(c.req.query("limit") ?? 20);
   if (!limit.success) return c.json({ error: "invalid_limit" }, 400);
 
-  const slices = await dimension(c.env.DB, parsed.data, name.data, limit.data);
-  return c.json({ slices, dimension: name.data });
+  const normalized = rangeForEnv(c.env, parsed.data);
+  const slices = await dimension(c.env.DB, normalized.range, name.data, limit.data);
+  return c.json({ slices, dimension: name.data, meta: normalized.meta });
 });
 
 stats.get("/top-links", async (c) => {
@@ -136,8 +170,9 @@ stats.get("/top-links", async (c) => {
     .safeParse(c.req.query("limit") ?? 5);
   if (!limit.success) return c.json({ error: "invalid_limit" }, 400);
 
-  const links = await topLinks(c.env.DB, parsed.data, limit.data);
-  return c.json({ links });
+  const normalized = rangeForEnv(c.env, parsed.data);
+  const links = await topLinks(c.env.DB, normalized.range, limit.data);
+  return c.json({ links, meta: normalized.meta });
 });
 
 stats.get("/live", async (c) => {

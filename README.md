@@ -80,7 +80,8 @@ to sign up for besides Cloudflare.
   datacenter that served the request
 - Device type, operating system, browser, preferred language
 - Referrer host, classified as direct, search, social, email or AI
-- The five UTM parameters
+- Campaign source, medium and name, accepted only as bounded label values;
+  free-form UTM term and content are not stored
 - Whether the visitor was a bot, kept out of every human-facing figure
 - Which of five outcomes the request produced: redirected, inactive, expired,
   password required, password failed
@@ -104,8 +105,10 @@ to sign up for besides Cloudflare.
 
 **Operations**
 
-- Hourly rollup into pre-aggregated daily tables
-- Daily retention job that deletes raw click rows past their window
+- Hourly rollup into pre-aggregated daily tables, with bounded catch-up after an
+  outage
+- Daily retention job that deletes raw click rows and sensitive dimension
+  aggregates past their window
 - Reversible migrations, verified in CI
 
 ## How the privacy design works
@@ -158,7 +161,7 @@ One Worker, three surfaces:
 | `/:slug` | Public redirect — the hot path | none |
 | `/api/*` | JSON API, 21 routes | session cookie |
 | `/app`, `/app/*` | The dashboard shell (a single-page app; routing past that point is client-side) | session cookie, checked client-side |
-| `/privacy`, `/robots.txt`, `/.well-known/security.txt`, `/_health` | Public | none |
+| `/privacy`, `/robots.txt`, `/.well-known/security.txt`, `/_health`, `/_ready` | Public | none |
 
 **Which document is `index.html` is a routing decision.** Cloudflare serves a
 matching static asset before invoking the Worker, and at `/` that asset is the
@@ -181,10 +184,11 @@ separate routers, and a test walks the framework's own route table and requires
 `401` from every non-allowlisted route. Mounting a new endpoint on the wrong
 router fails the build rather than shipping an open endpoint.
 
-**Analytics are computed twice and reconciled.** Live queries read raw clicks;
-the hourly rollup pre-aggregates the same data into daily tables. A test runs
-both paths over identical data and compares the results, so the two cannot
-drift into showing different numbers for the same day.
+**Rollups are reproducible and reconciled.** Live queries read raw clicks; the
+hourly job pre-aggregates the same data into daily tables and suppresses
+sensitive dimension values seen fewer than three times for a link/day. The demo
+seed and production rollup are run over identical data and their stored results
+are compared, so the two aggregation implementations cannot drift.
 
 ```
 src/
@@ -529,9 +533,14 @@ npm run deploy
 **6. Check it.**
 
 ```bash
-curl -s https://your-domain/_health          # {"ok":true}
+curl -s https://your-domain/_ready           # {"ok":true}
 curl -s https://your-domain/privacy | head   # your privacy notice
 ```
+
+`/_health` is an unconditional liveness probe: it shows that the Worker can
+answer. `/_ready` additionally checks required configuration, the static-asset
+binding, D1 availability, and the migrated `links` table; use readiness for
+post-deploy validation and traffic decisions.
 
 **7. Adjust the privacy notice.** `src/routes/public.ts` contains the text
 served at `/privacy`. It is accurate for the software as written, but it says
@@ -645,17 +654,14 @@ Dimensions: `country`, `city`, `device`, `os`, `browser`, `referrer_type`,
 
 Bots are excluded from every figure except the `bots` count in `summary`.
 
-**One caveat the API cannot hide:** these endpoints read raw click rows, so a
-range extending past `RAW_RETENTION_DAYS` under-reports rather than failing —
-no response carries a "truncated at" marker. The dashboard closes this by
-never *offering* such a range in the first place (see the Overview bullet
-above): every period its picker shows is one whose full comparison window
-still fits inside retention, so the under-report this paragraph describes
-cannot be reached through the shipped UI. A caller that queries these
-endpoints directly, or a future range picker that skips `periodsFor`, still
-hits it. Serving older ranges from the aggregate tables (`click_daily`,
-`click_daily_dim`) so a range past retention degrades to less-precise data
-instead of being unofferable at all remains separate, undone work.
+The four range-based responses include `meta.requestedFrom`, `effectiveFrom`,
+`retentionCutoff`, `truncated`, and the `daily-rotating-visitor-hash` unique
+count definition. Their raw-data query is clamped at the retention boundary,
+so a direct API caller can distinguish a partial requested range from complete
+retained history. The dashboard still avoids offering periods whose comparison
+window does not fit. Serving older ranges from `click_daily` and
+`click_daily_dim` remains a separate feature because aggregate unique counts
+have different semantics.
 
 ### Public
 
@@ -668,15 +674,16 @@ instead of being unofferable at all remains separate, undone work.
 | `GET` | `/robots.txt` | Allows the landing page, disallows every short link |
 | `GET` | `/.well-known/security.txt` | RFC 9116 |
 | `GET` | `/_health` | `{"ok":true}` |
+| `GET` | `/_ready` | `{"ok":true}` when configuration, assets, and D1 are ready; otherwise 503 |
 
 Reserved slugs, rejected at creation: `app`, `index`, `api`, `privacy`,
-`assets`, `robots.txt`, `favicon.ico`, `_health`. The first two are the two
+`assets`, `robots.txt`, `favicon.ico`, `_health`, `_ready`. The first two are the two
 documents the Vite build writes into the asset root — see
 [Architecture](#architecture).
 
 ## Data model
 
-Eight tables, created by one migration and reversed by one rollback file.
+Eight tables, maintained by forward migrations with matching rollback files.
 
 | Table | Holds |
 | --- | --- |
@@ -684,37 +691,40 @@ Eight tables, created by one migration and reversed by one rollback file.
 | `tags`, `link_tags` | Tags and their assignment |
 | `clicks` | One row per click. Geography, device, referrer, UTM, outcome, and `visitor_hash` — no IP, no raw user-agent |
 | `click_daily` | Per-day, per-link totals: clicks, uniques, bots |
-| `click_daily_dim` | Per-day, per-link, per-dimension counts. Retains the dimension's value alongside the count |
+| `click_daily_dim` | Per-day, per-link, per-dimension counts. Sensitive values require three clicks and expire with raw data |
 | `admin_sessions` | SHA-256 of the session token — never the token |
 | `login_attempts` | Daily-rotating IP hash, attempt count, lockout |
 
-Aggregate tables are kept indefinitely and raw clicks are not; that asymmetry
-is the entire reason the rollup exists.
+Daily totals and coarse aggregate dimensions are kept indefinitely. City,
+network operator, referrer host and campaign aggregates use the same retention
+window as raw clicks and are suppressed below three clicks per link/day.
 
 ## Scheduled jobs
 
-**Hourly rollup** (`0 * * * *`) aggregates today and yesterday into the daily
-tables. It is idempotent — it deletes a day before reinserting it — so running
-it repeatedly converges rather than accumulating, and re-rolling yesterday
-catches clicks that arrived just before midnight.
+**Hourly rollup** (`0 * * * *`) aggregates today and yesterday plus at most the
+seven oldest complete days missed during an outage. It is idempotent — it
+deletes a day before reinserting it — so running it repeatedly converges rather
+than accumulating. A longer backlog drains over later hourly invocations.
 
-**Daily retention** (`30 3 * * *`) deletes raw click rows past
-`RAW_RETENTION_DAYS`, expired sessions, and stale login-attempt rows. It works
-in bounded batches so a backlog cannot exceed a statement limit and fail
-forever, and **it refuses to delete raw rows for any day that was never rolled
-up** — if the rollup has been failing, retention declines and says so rather
-than silently eating history.
+**Daily retention** (`30 3 * * *`) deletes raw click rows and sensitive
+dimension aggregates past `RAW_RETENTION_DAYS`, plus expired sessions and stale
+login-attempt rows. It works in bounded batches so a backlog cannot exceed a
+statement limit and fail forever, and **it refuses to delete raw rows for any
+day that was never rolled up** — if catch-up still has work, retention keeps the
+source rows and reports the gap rather than silently eating history.
 
 ## Development
 
 ```bash
-npm test                    # 701 tests: 375 inside workerd against real D1, 326 in jsdom
+npm test                    # 735 tests: 408 inside workerd against real D1, 327 in jsdom
+npm run test:build-budget   # exercises the artifact-budget checker itself
 npm run test:watch
 npm run e2e                 # 36 tests in a real Chromium — see "End-to-end tests" above
 npm run check               # Biome: lint and format
 npm run check:fix
 npm run typecheck           # tsc --noEmit (backend, dashboard and e2e/, each their own project)
 npm run build:web           # builds both documents into web/dist: the landing and the app shell
+npm run build:verify        # builds, then enforces JS gzip and font-subset budgets
 npm run dev:web             # Vite dev server for the dashboard — see "The dashboard" above
 npm run db:seed:demo        # six months of demo data, locally — see "Demo data" above
 npm run screenshots         # regenerates docs/screenshots/ from that data
@@ -764,9 +774,9 @@ The backend and the dashboard are both done. Two known pieces of work remain,
 both already documented where a consumer of the affected figure will see them
 rather than only here:
 
-- **Ranges older than `RAW_RETENTION_DAYS` under-report.** The statistics
-  endpoints read raw click rows; serving older ranges from the aggregate
-  tables (`click_daily`, `click_daily_dim`) instead is not yet built.
+- **Historical ranges older than `RAW_RETENTION_DAYS` are clamped and marked.**
+  Serving those ranges from `click_daily` and `click_daily_dim` instead is not
+  yet built.
 - **Summed unique counts across days are deliberately imprecise**, for the
   reason in [How the privacy design works](#how-the-privacy-design-works) — a
   returning visitor is counted once per day, by design, not by omission.

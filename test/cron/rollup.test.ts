@@ -14,13 +14,14 @@ async function insert(ts: number, overrides: Record<string, unknown> = {}) {
     is_bot: 0,
     country: "IT",
     device_type: "desktop",
+    utm_campaign: null,
     ...overrides,
   };
   await env.DB.prepare(
-    `INSERT INTO clicks (link_id, ts, visitor_hash, source, outcome, is_bot, country, device_type)
-     VALUES (?, ?, ?, 'link', 'redirect', ?, ?, ?)`,
+    `INSERT INTO clicks (link_id, ts, visitor_hash, source, outcome, is_bot, country, device_type, utm_campaign)
+     VALUES (?, ?, ?, 'link', 'redirect', ?, ?, ?, ?)`,
   )
-    .bind(linkId, ts, row.visitor_hash, row.is_bot, row.country, row.device_type)
+    .bind(linkId, ts, row.visitor_hash, row.is_bot, row.country, row.device_type, row.utm_campaign)
     .run();
 }
 
@@ -61,6 +62,32 @@ describe("rollupDay", () => {
     ).all<{ value: string; clicks: number }>();
 
     expect(results.map((r) => r.value)).toEqual(["FR", "IT"]);
+  });
+
+  it("suppresses low-count sensitive values but keeps coarse dimensions", async () => {
+    await insert(BASE + 10, {
+      visitor_hash: "private-a",
+      country: "FR",
+      utm_campaign: "private-label",
+    });
+    await insert(BASE + 20, { visitor_hash: "private-b", utm_campaign: "private-label" });
+    await insert(BASE + 30, { visitor_hash: "shared-a", utm_campaign: "shared-label" });
+    await insert(BASE + 40, { visitor_hash: "shared-b", utm_campaign: "shared-label" });
+    await insert(BASE + 50, { visitor_hash: "shared-c", utm_campaign: "shared-label" });
+
+    await rollupDay(env.DB, DAY);
+
+    const { results: campaigns } = await env.DB.prepare(
+      `SELECT value, clicks, uniques FROM click_daily_dim
+       WHERE dimension = 'utm_campaign' ORDER BY value`,
+    ).all<{ value: string; clicks: number; uniques: number }>();
+    const france = await env.DB.prepare(
+      `SELECT clicks FROM click_daily_dim
+       WHERE dimension = 'country' AND value = 'FR'`,
+    ).first<{ clicks: number }>();
+
+    expect(campaigns).toStrictEqual([{ value: "shared-label", clicks: 3, uniques: 3 }]);
+    expect(france?.clicks).toBe(1);
   });
 
   it("is idempotent: running twice does not double the counts", async () => {
@@ -163,7 +190,34 @@ describe("rollupDay", () => {
 
 describe("runRollup", () => {
   it("processes today and yesterday", async () => {
-    const days = await runRollup(env.DB, BASE + 3600);
-    expect(days).toEqual(["2026-03-09", "2026-03-10"]);
+    const result = await runRollup(env.DB, BASE + 3600);
+    expect(result).toEqual({ days: ["2026-03-09", "2026-03-10"], backlog: false });
+  });
+
+  it("recovers at most seven missed complete days per run and drains the backlog", async () => {
+    for (let daysAgo = 11; daysAgo >= 3; daysAgo--) {
+      await insert(BASE - daysAgo * 86_400 + 60, {
+        visitor_hash: `missed-${daysAgo}`,
+      });
+    }
+
+    const first = await runRollup(env.DB, BASE + 3600);
+    const afterFirst = await env.DB.prepare("SELECT day FROM click_daily ORDER BY day").all<{
+      day: string;
+    }>();
+
+    expect(first.days).toHaveLength(9);
+    expect(first.days.slice(-2)).toEqual(["2026-03-09", "2026-03-10"]);
+    expect(first.backlog).toBe(true);
+    expect(afterFirst.results).toHaveLength(7);
+
+    const second = await runRollup(env.DB, BASE + 3600);
+    const afterSecond = await env.DB.prepare("SELECT day FROM click_daily ORDER BY day").all<{
+      day: string;
+    }>();
+
+    expect(second.days).toHaveLength(4);
+    expect(second.backlog).toBe(false);
+    expect(afterSecond.results).toHaveLength(9);
   });
 });

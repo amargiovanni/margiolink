@@ -1,12 +1,14 @@
+import { lazy, Suspense } from "react";
 import { Route, Link as RouterLink, Routes } from "react-router";
 import { AppShell } from "./components/layout/AppShell";
 import { RequireSession } from "./components/RequireSession";
-import LinkDetail from "./pages/LinkDetail";
-import Links from "./pages/Links";
-import Login from "./pages/Login";
-import Overview from "./pages/Overview";
-import Settings from "./pages/Settings";
-import Tags from "./pages/Tags";
+
+const LinkDetail = lazy(() => import("./pages/LinkDetail"));
+const Links = lazy(() => import("./pages/Links"));
+const Login = lazy(() => import("./pages/Login"));
+const Overview = lazy(() => import("./pages/Overview"));
+const Settings = lazy(() => import("./pages/Settings"));
+const Tags = lazy(() => import("./pages/Tags"));
 
 /** The catch-all's destination — every entry in `PrimaryNav.SECTIONS` now
  *  resolves to a real page (Task 13 finished `/tags` and `/settings`), so
@@ -31,59 +33,69 @@ function NotFound() {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route
-        path="/"
-        element={
-          <RequireSession>
-            <AppShell>
-              <Overview />
-            </AppShell>
-          </RequireSession>
-        }
-      />
-      <Route
-        path="/links"
-        element={
-          <RequireSession>
-            <AppShell>
-              <Links />
-            </AppShell>
-          </RequireSession>
-        }
-      />
-      <Route
-        path="/links/:id"
-        element={
-          <RequireSession>
-            <AppShell>
-              <LinkDetail />
-            </AppShell>
-          </RequireSession>
-        }
-      />
-      <Route
-        path="/tags"
-        element={
-          <RequireSession>
-            <AppShell>
-              <Tags />
-            </AppShell>
-          </RequireSession>
-        }
-      />
-      <Route
-        path="/settings"
-        element={
-          <RequireSession>
-            <AppShell>
-              <Settings />
-            </AppShell>
-          </RequireSession>
-        }
-      />
-      {/* Deliberately behind `RequireSession`, not in front of it: an
+    <Suspense
+      fallback={
+        <div
+          className="flex min-h-40 items-center justify-center text-sm text-ink-muted"
+          role="status"
+        >
+          Loading…
+        </div>
+      }
+    >
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/"
+          element={
+            <RequireSession>
+              <AppShell>
+                <Overview />
+              </AppShell>
+            </RequireSession>
+          }
+        />
+        <Route
+          path="/links"
+          element={
+            <RequireSession>
+              <AppShell>
+                <Links />
+              </AppShell>
+            </RequireSession>
+          }
+        />
+        <Route
+          path="/links/:id"
+          element={
+            <RequireSession>
+              <AppShell>
+                <LinkDetail />
+              </AppShell>
+            </RequireSession>
+          }
+        />
+        <Route
+          path="/tags"
+          element={
+            <RequireSession>
+              <AppShell>
+                <Tags />
+              </AppShell>
+            </RequireSession>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <RequireSession>
+              <AppShell>
+                <Settings />
+              </AppShell>
+            </RequireSession>
+          }
+        />
+        {/* Deliberately behind `RequireSession`, not in front of it: an
           anonymous visitor to this private, single-operator dashboard
           should not be able to tell which paths exist by which ones bounce
           them to `/login` and which show a distinct "not found" page —
@@ -92,16 +104,17 @@ export default function App() {
           into a path-enumeration oracle. `NotFound`'s only real audience is
           an authenticated reader who mistyped a URL. Do not "fix" this by
           moving the route in front of `RequireSession`. */}
-      <Route
-        path="/*"
-        element={
-          <RequireSession>
-            <AppShell>
-              <NotFound />
-            </AppShell>
-          </RequireSession>
-        }
-      />
-    </Routes>
+        <Route
+          path="/*"
+          element={
+            <RequireSession>
+              <AppShell>
+                <NotFound />
+              </AppShell>
+            </RequireSession>
+          }
+        />
+      </Routes>
+    </Suspense>
   );
 }

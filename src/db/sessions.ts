@@ -9,6 +9,7 @@ export interface SessionRow {
 }
 
 const TTL_SECONDS = 30 * 24 * 3600;
+export const SESSION_TOUCH_INTERVAL_SECONDS = 300;
 
 export async function createSession(
   db: D1Database,
@@ -39,6 +40,10 @@ export async function readSession(
     .first<SessionRow>();
 
   if (!session) return null;
+
+  if (now - session.last_seen_at < SESSION_TOUCH_INTERVAL_SECONDS) {
+    return session;
+  }
 
   await db.prepare("UPDATE admin_sessions SET last_seen_at = ? WHERE id = ?").bind(now, id).run();
 

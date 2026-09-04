@@ -47,11 +47,19 @@ processing is limited to what measurement requires:
   the necessity test on this section's own terms. `migrations/0002_drop_referrer_url.sql`
   dropped the column; the reversal script restores the column but deliberately
   not the data.
+- Campaign collection is limited to `utm_source`, `utm_medium`, and
+  `utm_campaign`. Each is trimmed and accepted only as a 1–64 character ASCII
+  label made of letters, digits, `.`, `_`, `~`, or `-`; arbitrary free text,
+  email addresses, and the former `utm_term`/`utm_content` values are not
+  recorded.
 - Individual records are deleted after `RAW_RETENTION_DAYS` days (180 in the
   current configuration — `wrangler.jsonc`), enforced by
   `src/cron/retention.ts`'s `runRetention`, which runs daily at 03:30 UTC
-  (`triggers.crons` in `wrangler.jsonc`). Only aggregate counts in
-  `click_daily` and `click_daily_dim` survive past that point.
+  (`triggers.crons` in `wrangler.jsonc`). Daily totals and coarse aggregate
+  dimensions may survive past that point. City, network operator, referrer
+  host, and supported UTM aggregate rows do not: they use the same retention
+  window and are materialised only when at least three clicks share the value
+  for the same link and day.
 
 No less intrusive alternative meets the purpose: a purely aggregate counter
 cannot distinguish a returning visitor from a new one, which is the

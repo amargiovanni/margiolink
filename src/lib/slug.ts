@@ -21,6 +21,7 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   "robots.txt",
   "favicon.ico",
   "_health",
+  "_ready",
 ]);
 
 export function generateSlug(length = 7): string {

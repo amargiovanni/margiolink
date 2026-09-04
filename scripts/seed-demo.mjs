@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEMO_PASSWORD, generateDemoData } from "./demo-data.mjs";
 import { buildSeedStatements } from "./demo-sql.mjs";
+import { hashPasswordForSeed } from "./password-hash.mjs";
 
 const DB = "margiolink";
 
@@ -53,29 +54,12 @@ const now = Math.floor(Date.now() / 1000);
 
 /**
  * The one link with a password gets a real PBKDF2 hash, computed exactly as
- * `hashPassword` in `src/lib/crypto.ts` does it — same 100,000 iterations,
- * same SHA-256, same hex salt — so the interstitial in the screenshots is a
- * working password prompt a reader can actually open, not a dead end. Node's
- * `crypto.subtle` and workerd's are both WebCrypto, so "exactly as" is a
- * property of the algorithm parameters rather than a hope.
+ * `hashPassword` in `src/lib/crypto.ts` does it — same versioned encoding,
+ * 600,000 iterations, SHA-256 and hex salt — so the interstitial in the
+ * screenshots is a working password prompt a reader can actually open, not a
+ * dead end. Node's `crypto.subtle` and workerd's are both WebCrypto, so
+ * "exactly as" is a property of the algorithm parameters rather than a hope.
  */
-async function hashPassword(password, saltHex) {
-  const encoder = new TextEncoder();
-  const salt = Uint8Array.from(saltHex.match(/../g).map((byte) => Number.parseInt(byte, 16)));
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits"],
-  );
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt, iterations: 100_000, hash: "SHA-256" },
-    keyMaterial,
-    256,
-  );
-  return [...new Uint8Array(bits)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
 
 console.log(`seed-demo: generating ${days} days of demo data (seed ${seed})`);
 const data = generateDemoData({ now, days, seed });
@@ -87,7 +71,7 @@ for (const link of data.links) {
   // `links` table on every seed for no security gained — the database is
   // local and the password is printed in this file's output.
   link.passwordSalt = "5eed5eed5eed5eed5eed5eed5eed5eed";
-  link.passwordHash = await hashPassword(link.password, link.passwordSalt);
+  link.passwordHash = await hashPasswordForSeed(link.password, link.passwordSalt);
 }
 
 const statements = buildSeedStatements(data);
