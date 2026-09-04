@@ -37,4 +37,9 @@ declare global {
     const contents: string;
     export default contents;
   }
+
+  declare module "*_headers?raw" {
+    const contents: string;
+    export default contents;
+  }
 }

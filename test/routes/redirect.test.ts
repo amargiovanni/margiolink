@@ -167,6 +167,20 @@ describe("password-protected links", () => {
     expect((await clickRows()).at(-1)?.outcome).toBe("redirect");
   });
 
+  it("rejects an oversized password before deriving its hash", async () => {
+    await createProtected("hunter2");
+
+    const res = await SELF.fetch("https://link.test/secret", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: `password=${"x".repeat(201)}`,
+      redirect: "manual",
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("Wrong password");
+  });
+
   it("posts the form back to the stored slug, not the one taken from the URL", async () => {
     await createProtected("hunter2");
 
@@ -231,7 +245,7 @@ describe("the password interstitial is throttled", () => {
 
     // Unauthenticated PBKDF2 at 100k iterations is both a brute-force oracle
     // and a CPU amplification vector, so attempts must stop being answered.
-    expect(statuses).toContain(429);
+    expect(statuses).toEqual([...Array(8).fill(401), 429]);
 
     const locked = await submit("guarded", "wrong-again");
     expect(locked.status).toBe(429);

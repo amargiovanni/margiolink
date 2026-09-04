@@ -1,8 +1,23 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { useSummary } from "./queries";
+import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
+import {
+  type DimensionResponse,
+  type StatsMeta,
+  type SummaryResponse,
+  type TimeseriesResponse,
+  type TopLinksResponse,
+  useSummary,
+} from "./queries";
+
+const STATS_META: StatsMeta = {
+  requestedFrom: 0,
+  effectiveFrom: 0,
+  retentionCutoff: 0,
+  truncated: false,
+  uniquesDefinition: "daily-rotating-visitor-hash",
+};
 
 /** Responds by `linkId`, distinguishing "no linkId at all" from any
  *  specific one, so a mutation that drops `linkId` from the request
@@ -15,7 +30,12 @@ function stubByLinkId(responses: Record<string, { current: { clicks: number } }>
       const linkId = url.searchParams.get("linkId") ?? "";
       const body = responses[linkId];
       if (!body) return Response.json({ error: "not_found" }, { status: 404 });
-      return Response.json({ ...body, previous: { clicks: 0 } });
+      return Response.json({
+        ...body,
+        previous: { clicks: 0, uniques: 0, bots: 0, countries: 0 },
+        range: { from: 0, to: 100 },
+        meta: STATS_META,
+      });
     }),
   );
 }
@@ -33,6 +53,13 @@ afterEach(() => vi.unstubAllGlobals());
  * because the URL itself is built correctly; only the *cache* is wrong.
  */
 describe("useSummary — cross-link cache isolation", () => {
+  it("shares retained-range metadata across every range response type", () => {
+    expectTypeOf<SummaryResponse["meta"]>().toEqualTypeOf<StatsMeta>();
+    expectTypeOf<TimeseriesResponse["meta"]>().toEqualTypeOf<StatsMeta>();
+    expectTypeOf<DimensionResponse["meta"]>().toEqualTypeOf<StatsMeta>();
+    expectTypeOf<TopLinksResponse["meta"]>().toEqualTypeOf<StatsMeta>();
+  });
+
   it("does not serve one link's cached summary for a different link's query", async () => {
     stubByLinkId({
       "1": { current: { clicks: 111 } },
@@ -50,6 +77,7 @@ describe("useSummary — cross-link cache isolation", () => {
     );
 
     await waitFor(() => expect(result.current.data?.current.clicks).toBe(111));
+    expect(result.current.data?.meta).toStrictEqual(STATS_META);
 
     rerender({ linkId: 2 });
 

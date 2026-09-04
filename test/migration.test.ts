@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import down0001 from "../rollback/0001_init.down.sql?raw";
 import down0002 from "../rollback/0002_drop_referrer_url.down.sql?raw";
+import down0003 from "../rollback/0003_rate_limit_reservation.down.sql?raw";
 
 const OUR_TABLES = [
   "links",
@@ -25,6 +26,24 @@ async function tableNames(): Promise<string[]> {
   ).all<{ name: string }>();
   return results.map((r) => r.name);
 }
+
+describe("migration 0003", () => {
+  it("adds a nullable reservation identity to login attempts", async () => {
+    const columns = await columnNames("login_attempts");
+    expect(columns).toContain("reservation_id");
+  });
+
+  it("is reversible", async () => {
+    const statements = down0003
+      .split(";")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .map((s) => env.DB.prepare(s));
+    await env.DB.batch(statements);
+
+    expect(await columnNames("login_attempts")).not.toContain("reservation_id");
+  });
+});
 
 describe("migration 0002", () => {
   it("has dropped referrer_url, keeping the host and the classification", async () => {

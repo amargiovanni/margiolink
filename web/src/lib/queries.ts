@@ -37,10 +37,37 @@ export interface Summary {
   countries: number;
 }
 
+export interface StatsMeta {
+  requestedFrom: number;
+  effectiveFrom: number;
+  retentionCutoff: number;
+  truncated: boolean;
+  uniquesDefinition: "daily-rotating-visitor-hash";
+}
+
+export interface SummaryResponse {
+  current: Summary;
+  previous: Summary;
+  range: { from: number; to: number };
+  meta: StatsMeta;
+}
+
+export interface TimeseriesResponse {
+  buckets: { bucket: string; clicks: number; uniques: number }[];
+  granularity: "hour" | "day" | "week";
+  meta: StatsMeta;
+}
+
 export interface Slice {
   value: string;
   clicks: number;
   uniques: number;
+}
+
+export interface DimensionResponse {
+  slices: Slice[];
+  dimension: string;
+  meta: StatsMeta;
 }
 
 export interface Meta {
@@ -94,26 +121,21 @@ export function useMeta() {
 export function useSummary(range: Range) {
   return useQuery({
     queryKey: keys.stats("summary", range),
-    queryFn: () =>
-      api.get<{ current: Summary; previous: Summary }>("/api/stats/summary", { ...range }),
+    queryFn: () => api.get<SummaryResponse>("/api/stats/summary", { ...range }),
   });
 }
 
 export function useTimeseries(range: Range, granularity: "hour" | "day" | "week") {
   return useQuery({
     queryKey: keys.stats("timeseries", { ...range, granularity }),
-    queryFn: () =>
-      api.get<{ buckets: { bucket: string; clicks: number; uniques: number }[] }>(
-        "/api/stats/timeseries",
-        { ...range, granularity },
-      ),
+    queryFn: () => api.get<TimeseriesResponse>("/api/stats/timeseries", { ...range, granularity }),
   });
 }
 
 export function useDimension(range: Range, name: string, limit = 20) {
   return useQuery({
     queryKey: keys.stats("dimension", { ...range, name, limit }),
-    queryFn: () => api.get<{ slices: Slice[] }>("/api/stats/dimension", { ...range, name, limit }),
+    queryFn: () => api.get<DimensionResponse>("/api/stats/dimension", { ...range, name, limit }),
   });
 }
 
@@ -125,6 +147,11 @@ export interface TopLink {
   uniques: number;
 }
 
+export interface TopLinksResponse {
+  links: TopLink[];
+  meta: StatsMeta;
+}
+
 /** The overview page's "top links" panel — ranked by click count within
  *  `range`, unlike `useSparklines` below, which is a fixed trailing window
  *  independent of any selected period. `limit` is part of the query key
@@ -132,7 +159,7 @@ export interface TopLink {
 export function useTopLinks(range: Range, limit = 5) {
   return useQuery({
     queryKey: keys.stats("top-links", { ...range, limit }),
-    queryFn: () => api.get<{ links: TopLink[] }>("/api/stats/top-links", { ...range, limit }),
+    queryFn: () => api.get<TopLinksResponse>("/api/stats/top-links", { ...range, limit }),
   });
 }
 

@@ -15,8 +15,6 @@ export interface UtmParams {
   source: string | null;
   medium: string | null;
   campaign: string | null;
-  term: string | null;
-  content: string | null;
 }
 
 export interface RequestContext {
@@ -32,6 +30,14 @@ export interface RequestContext {
 function cfString(cf: Record<string, unknown> | undefined, key: string): string | null {
   const value = cf?.[key];
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+const CAMPAIGN_LABEL = /^[A-Za-z0-9._~-]{1,64}$/;
+
+export function normaliseCampaignLabel(value: string | null): string | null {
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return CAMPAIGN_LABEL.test(trimmed) ? trimmed : null;
 }
 
 export function buildRequestContext(request: Request): RequestContext {
@@ -53,11 +59,9 @@ export function buildRequestContext(request: Request): RequestContext {
     client: parseClient(request.headers),
     referrer: parseReferrer(request.headers.get("referer")),
     utm: {
-      source: params.get("utm_source"),
-      medium: params.get("utm_medium"),
-      campaign: params.get("utm_campaign"),
-      term: params.get("utm_term"),
-      content: params.get("utm_content"),
+      source: normaliseCampaignLabel(params.get("utm_source")),
+      medium: normaliseCampaignLabel(params.get("utm_medium")),
+      campaign: normaliseCampaignLabel(params.get("utm_campaign")),
     },
     source: params.get("s") === "qr" ? "qr" : "link",
   };

@@ -114,6 +114,29 @@ describe("sha256Hex", () => {
 });
 
 describe("password hashing", () => {
+  it("encodes the algorithm and work factor in new hashes", async () => {
+    const hash = await hashPassword("open sesame", randomSalt());
+
+    expect(hash).toMatch(/^pbkdf2-sha256\$600000\$[0-9a-f]{64}$/);
+  });
+
+  it("continues to verify legacy 100,000-iteration digests", async () => {
+    const legacySalt = "000102030405060708090a0b0c0d0e0f";
+    const legacyDigest = "63786974f6be8b6bf76b56780cd622095eb7ca7cdf0bfa7b1bce77826299d9a8";
+
+    expect(await verifyPassword("open sesame", legacySalt, legacyDigest)).toBe(true);
+  });
+
+  it.each([
+    "not-a-hash",
+    "a".repeat(63),
+    "A".repeat(64),
+    `pbkdf2-sha256$100000$${"a".repeat(64)}`,
+    `pbkdf2-sha1$600000$${"a".repeat(64)}`,
+  ])("rejects malformed or unsupported encoding %s", async (encoded) => {
+    expect(await verifyPassword("open sesame", randomSalt(), encoded)).toBe(false);
+  });
+
   it("verifies the correct password", async () => {
     const salt = randomSalt();
     const hash = await hashPassword("open sesame", salt);

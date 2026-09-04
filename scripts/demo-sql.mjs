@@ -34,6 +34,15 @@ export const ROLLUP_DIMENSIONS = {
   dow_hour: "strftime('%w', ts, 'unixepoch') || '-' || strftime('%H', ts, 'unixepoch')",
 };
 
+export const SENSITIVE_ROLLUP_DIMENSIONS = new Set([
+  "city",
+  "asn_org",
+  "referrer_host",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+]);
+
 /** SQLite string literal: single quotes doubled, NULL for absent values.
  *  Every value in the demo dataset comes from a literal pool in
  *  `demo-data.mjs`, so this is belt-and-braces rather than load-bearing — but
@@ -120,6 +129,7 @@ GROUP BY 1, 2;`,
   ];
 
   for (const [name, column] of Object.entries(ROLLUP_DIMENSIONS)) {
+    const privacyThreshold = SENSITIVE_ROLLUP_DIMENSIONS.has(name) ? "\nHAVING COUNT(*) >= 3" : "";
     statements.push(
       `INSERT INTO click_daily_dim (day, link_id, dimension, value, clicks, uniques)
 SELECT date(ts, 'unixepoch'),
@@ -130,7 +140,7 @@ SELECT date(ts, 'unixepoch'),
        COUNT(DISTINCT visitor_hash)
 FROM clicks
 WHERE is_bot = 0
-GROUP BY 1, 2, 4;`,
+GROUP BY 1, 2, 4${privacyThreshold};`,
     );
   }
 
@@ -192,8 +202,8 @@ export { CLICK_COLUMNS };
 /**
  * @param {ReturnType<import("./demo-data.mjs").generateDemoData>} data
  *   With `passwordHash`/`passwordSalt` already filled in on any link that has
- *   a `password` — hashing is 100,000 PBKDF2 iterations and belongs to the
- *   caller, not to a string builder.
+ *   a `password` — versioned PBKDF2 hashing belongs to the caller, not to a
+ *   string builder.
  * @returns {string[]} Statements, in the order they must run.
  */
 export function buildSeedStatements(data) {

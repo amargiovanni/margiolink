@@ -41,7 +41,10 @@ jobs:
       # is why this passed locally and 404'd here for three runs before
       # anyone looked at the CI log.
       - name: Build the dashboard
-        run: npm run build:web
+        run: npm run build:verify
+
+      - name: Test the build budget checker
+        run: npm run test:build-budget
 
       # Runs inside workerd against a real local D1 database. No Cloudflare
       # credentials and no .dev.vars are needed: the test bindings live in

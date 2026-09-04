@@ -51,6 +51,13 @@ describe("POST /api/auth/login", () => {
     expect(res.status).toBe(400);
   });
 
+  it("rejects oversized credentials before comparing them", async () => {
+    const res = await login({ username: "admin", password: "x".repeat(201) });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_body" });
+  });
+
   it("locks out after eight failures and answers 429 with Retry-After", async () => {
     const headers = { "cf-connecting-ip": "198.51.100.7" };
     for (let i = 0; i < 8; i++) {

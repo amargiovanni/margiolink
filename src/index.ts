@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { runRetention } from "./cron/retention";
 import { runRollup } from "./cron/rollup";
+import { checkReadiness } from "./lib/readiness";
+import { securityHeaders } from "./lib/security-headers";
 import { createApiRouter } from "./routes/api";
 import { registerPublicRoutes } from "./routes/public";
 import { registerRedirect } from "./routes/redirect";
@@ -8,7 +10,13 @@ import type { Env } from "./types";
 
 export const app = new Hono<{ Bindings: Env }>();
 
+app.use("*", securityHeaders);
+
 app.get("/_health", (c) => c.json({ ok: true }));
+app.get("/_ready", async (c) => {
+  const ready = await checkReadiness(c.env);
+  return ready ? c.json({ ok: true }) : c.json({ ok: false }, 503);
+});
 app.route("/api", createApiRouter());
 registerPublicRoutes(app);
 
@@ -25,7 +33,10 @@ export default {
       return;
     }
 
-    const days = await runRollup(env.DB, now);
-    console.log("rollup", days);
+    const result = await runRollup(env.DB, now);
+    console.log(JSON.stringify({ event: "rollup", ...result }));
+    if (result.backlog) {
+      console.warn(JSON.stringify({ event: "rollup_backlog", days: result.days }));
+    }
   },
 };

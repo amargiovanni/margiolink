@@ -53,19 +53,35 @@ describe("buildRequestContext", () => {
     expect(buildRequestContext(request("https://link.test/abc")).ip).toBe("");
   });
 
-  it("collects all five UTM parameters", () => {
+  it("collects only supported campaign labels", () => {
     const ctx = buildRequestContext(
       request(
-        "https://link.test/abc?utm_source=newsletter&utm_medium=email&utm_campaign=launch&utm_term=spring&utm_content=header",
+        "https://link.test/abc?utm_source=%20newsletter%20&utm_medium=email&utm_campaign=launch-2026&utm_term=spring&utm_content=header",
       ),
     );
     expect(ctx.utm).toEqual({
       source: "newsletter",
       medium: "email",
-      campaign: "launch",
-      term: "spring",
-      content: "header",
+      campaign: "launch-2026",
     });
+  });
+
+  it("discards campaign values that could carry free-form or identifying text", () => {
+    const ctx = buildRequestContext(
+      request(
+        `https://link.test/abc?utm_source=${encodeURIComponent("person@example.com")}&utm_medium=${encodeURIComponent("two words")}&utm_campaign=${"x".repeat(65)}`,
+      ),
+    );
+
+    expect(ctx.utm).toEqual({ source: null, medium: null, campaign: null });
+  });
+
+  it("keeps a campaign label at the 64-character boundary", () => {
+    const campaign = `release-${"x".repeat(56)}`;
+    expect(campaign).toHaveLength(64);
+    expect(
+      buildRequestContext(request(`https://link.test/abc?utm_campaign=${campaign}`)).utm.campaign,
+    ).toBe(campaign);
   });
 
   it("marks a QR scan when s=qr is present", () => {
