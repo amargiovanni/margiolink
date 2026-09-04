@@ -36,7 +36,7 @@ export default function Login() {
         <section className="flex min-h-76 flex-col justify-between bg-rail p-7 text-rail-ink sm:p-10 lg:min-h-150">
           <BrandMark />
           <div className="max-w-md py-12">
-            <p className="page-eyebrow">Private by construction</p>
+            <p className="page-eyebrow text-rail-muted">Private by construction</p>
             <p className="font-display text-4xl leading-[0.98] font-semibold tracking-[-0.045em] sm:text-5xl">
               Privacy-first link intelligence.
             </p>

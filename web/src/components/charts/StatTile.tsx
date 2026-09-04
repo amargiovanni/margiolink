@@ -37,8 +37,9 @@ export function StatTile({
         : ArrowRight;
   const directionWord =
     delta?.direction === "up" ? "increase" : delta?.direction === "down" ? "decrease" : "no change";
-  const tone =
-    delta?.direction === "up"
+  const tone = featured
+    ? "text-rail-muted"
+    : delta?.direction === "up"
       ? "text-good"
       : delta?.direction === "down"
         ? "text-critical"
@@ -83,7 +84,9 @@ export function StatTile({
           <span role="note" aria-label={`${directionWord} ${delta.text}`}>
             {delta.text}
           </span>
-          <span className="text-ink-faint">vs previous period</span>
+          <span className={featured ? "text-rail-muted" : "text-ink-faint"}>
+            vs previous period
+          </span>
         </p>
       ) : null}
 
