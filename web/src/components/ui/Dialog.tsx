@@ -43,21 +43,23 @@ export function Dialog({
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
-        <RadixDialog.Overlay className="fixed inset-0 z-40 bg-surface-sunken/80" />
+        <RadixDialog.Overlay className="fixed inset-0 z-40 bg-surface-sunken/82 backdrop-blur-sm data-[state=open]:animate-[page-enter_180ms_ease-out]" />
         <RadixDialog.Content
           onOpenAutoFocus={onOpenAutoFocus}
           className={cn(
-            "fixed top-1/2 left-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-rule bg-surface-raised p-6 shadow-lg",
+            "fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-rule bg-surface-raised p-6 shadow-2xl data-[state=open]:animate-[page-enter_220ms_ease-out]",
             className,
           )}
         >
           <div className="flex items-start justify-between gap-4">
-            <RadixDialog.Title className="font-display text-lg text-ink">{title}</RadixDialog.Title>
+            <RadixDialog.Title className="font-display text-2xl font-semibold tracking-tight text-ink">
+              {title}
+            </RadixDialog.Title>
             <RadixDialog.Close asChild>
               <button
                 type="button"
                 aria-label="Close"
-                className="shrink-0 rounded text-ink-muted hover:text-ink"
+                className="grid size-9 shrink-0 place-items-center rounded-lg border border-transparent text-ink-muted transition-colors hover:border-rule hover:bg-surface-soft hover:text-ink"
               >
                 <X className="size-4" aria-hidden="true" />
               </button>

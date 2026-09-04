@@ -6,6 +6,7 @@ import { RankedBars } from "../components/charts/RankedBars";
 import { StatTile } from "../components/charts/StatTile";
 import { TimeSeries } from "../components/charts/TimeSeries";
 import { WorldMap } from "../components/charts/WorldMap";
+import { PageHeader } from "../components/layout/PageHeader";
 import { PeriodPicker } from "../components/PeriodPicker";
 import { formatCount } from "../lib/format";
 import { type Range, useDimension, useSummary, useTimeseries, useTopLinks } from "../lib/queries";
@@ -50,7 +51,7 @@ function DimensionPanel({
       ) : query.isPending ? (
         <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
       ) : (
-        <RankedBars slices={query.data.slices} label={title} />
+        <RankedBars slices={query.data.slices} label={title} limit={6} />
       )}
     </ChartFrame>
   );
@@ -151,9 +152,9 @@ function BotShareTile({
   const high = share > 50;
 
   return (
-    <div className="rounded-lg border border-rule bg-surface-raised p-4">
-      <p className="text-sm text-ink-muted">Bot share</p>
-      <output className="mt-2 flex items-baseline gap-2 font-display text-4xl leading-none tabular">
+    <div className="rounded-lg border border-rule bg-surface-raised p-5 shadow-sm">
+      <p className="text-xs font-semibold tracking-wide text-ink-muted">Bot share</p>
+      <output className="mt-4 flex items-baseline gap-2 font-display text-4xl leading-none font-semibold tracking-tight tabular sm:text-5xl">
         <span className={high ? "text-warning" : undefined}>{share}%</span>
         {high ? <span className="text-sm font-sans text-warning">high</span> : null}
       </output>
@@ -194,26 +195,30 @@ export default function Overview() {
   const uniqueSpark = timeseriesQuery.isSuccess ? buckets.map((b) => b.uniques) : undefined;
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="font-display text-3xl text-ink">Overview</h1>
-        <div className="flex flex-col items-end gap-1">
-          {metaQuery.isError ? (
-            <p role="alert" className="text-xs text-critical">
-              Could not load the retention window. Showing the last 7 days only.
-            </p>
-          ) : metaQuery.isPending ? (
-            <p className="text-xs text-ink-muted">Loading period options…</p>
-          ) : (
-            <>
-              <PeriodPicker value={periodId} onChange={setPeriodId} periods={periods} />
-              {periodNote && <p className="text-xs text-ink-faint">{periodNote}</p>}
-            </>
-          )}
-        </div>
-      </header>
+    <div className="flex flex-col gap-8 lg:gap-10">
+      <PageHeader
+        eyebrow="Analytics workspace"
+        title="Overview"
+        description="See what changed and what deserves attention, then trace where your traffic came from."
+        actions={
+          <div className="flex max-w-full flex-col items-start gap-1 sm:items-end">
+            {metaQuery.isError ? (
+              <p role="alert" className="text-xs text-critical">
+                Could not load the retention window. Showing the last 7 days only.
+              </p>
+            ) : metaQuery.isPending ? (
+              <p className="text-xs text-ink-muted">Loading period options…</p>
+            ) : (
+              <>
+                <PeriodPicker value={periodId} onChange={setPeriodId} periods={periods} />
+                {periodNote && <p className="max-w-xl text-xs text-ink-faint">{periodNote}</p>}
+              </>
+            )}
+          </div>
+        }
+      />
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:gap-4">
         {summaryQuery.isError ? (
           <p role="alert" className="text-sm text-critical sm:col-span-4">
             Could not load summary stats.
@@ -227,6 +232,7 @@ export default function Overview() {
               value={summaryQuery.data.current.clicks}
               previous={summaryQuery.data.previous.clicks}
               spark={clickSpark}
+              featured
             />
             <StatTile
               label="Unique visitors"
@@ -279,7 +285,7 @@ export default function Overview() {
           twenty countries — and stretching the short one to match the tall
           one pads it with a few hundred pixels of nothing. A card is as tall
           as what is in it. */}
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[0.82fr_1.18fr]">
         <TopLinksPanel range={range} />
 
         <ChartFrame
@@ -295,10 +301,12 @@ export default function Overview() {
           ) : countryQuery.isPending ? (
             <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
           ) : (
-            <WorldMap slices={countryQuery.data.slices} />
+            <WorldMap slices={countryQuery.data.slices} listLimit={6} />
           )}
         </ChartFrame>
+      </div>
 
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <DimensionPanel title="Devices" query={deviceQuery} />
         <DimensionPanel title="Channels" query={channelQuery} />
       </div>

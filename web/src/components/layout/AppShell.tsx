@@ -3,18 +3,11 @@ import { CommandPalette } from "../links/CommandPalette";
 import { PrimaryNav } from "./PrimaryNav";
 import { ThemeToggle } from "./ThemeToggle";
 
-/**
- * The frame every authenticated page renders inside: a skip link that is the
- * first focusable element and actually moves focus (not just scrolls) to
- * `#main`, one `PrimaryNav` landmark (a rail above 1024px, a bottom bar
- * below it — see PrimaryNav for why it is one element, not two), the
- * `<main>` landmark itself, and the `⌘K`/`Ctrl+K` command palette — mounted
- * once here rather than per-page, so it's reachable from anywhere the shell
- * wraps.
- */
+/** The shared authenticated frame: one primary navigation landmark, a skip
+ * link, one main landmark, and the command palette mounted exactly once. */
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-full flex-col lg:flex-row">
+    <div className="min-h-full lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
       <CommandPalette />
       <a
         href="#main"
@@ -27,14 +20,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         Skip to main content
       </a>
       <PrimaryNav />
-      <div className="flex flex-1 flex-col">
-        <header className="flex items-center justify-end border-b border-rule px-4 py-2">
+      <div className="app-workspace flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-end border-b border-rule bg-surface/82 px-4 backdrop-blur-xl lg:px-8">
           <ThemeToggle />
         </header>
-        {/* tabIndex={-1} makes the skip link's target programmatically
-            focusable without adding it to the normal tab order. */}
-        <main id="main" tabIndex={-1} className="flex-1 p-4 pb-20 outline-none lg:pb-4">
-          {children}
+        <main
+          id="main"
+          tabIndex={-1}
+          className="mx-auto w-full max-w-[100rem] flex-1 px-4 pt-8 pb-28 outline-none sm:px-6 lg:px-8 lg:pt-10 lg:pb-16 xl:px-12"
+        >
+          <div className="page-enter">{children}</div>
         </main>
       </div>
     </div>

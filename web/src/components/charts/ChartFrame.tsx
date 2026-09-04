@@ -23,6 +23,7 @@ export function ChartFrame({
   series = [],
   table,
   status,
+  headingLevel = 2,
   errorMessage = "Could not load this data.",
   children,
 }: {
@@ -48,6 +49,7 @@ export function ChartFrame({
    *  distinction, applied to the other pane, so absence and failure are
    *  never the same pixels twice. */
   status: ChartQueryStatus;
+  headingLevel?: 2 | 3;
   /** Shown in both panes' failed state. Match the chart pane's own message
    *  (passed to `children` separately) so a reader sees one sentence for
    *  one failure, not two different ones depending which pane they're on. */
@@ -56,22 +58,23 @@ export function ChartFrame({
 }) {
   const [view, setView] = useState<"chart" | "table">("chart");
   const headingId = useId();
+  const Heading = headingLevel === 3 ? "h3" : "h2";
 
   return (
-    <section
-      aria-labelledby={headingId}
-      className="rounded-lg border border-rule bg-surface-raised p-4"
-    >
-      <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <section aria-labelledby={headingId} className="editorial-panel rounded-lg p-5 sm:p-6">
+      <header className="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-rule pb-4">
         <div>
           {/* h2, not h3: every page that uses ChartFrame (Overview,
               LinkDetail) puts its panels directly under the page's own h1
               with nothing between — Settings is the only page with real
               subsections, and its own headings are h2. An h3 here would
               skip a level on every page that has no h2 to land under. */}
-          <h2 id={headingId} className="font-display text-lg leading-tight">
+          <Heading
+            id={headingId}
+            className="font-display text-xl leading-tight font-semibold tracking-tight"
+          >
             {title}
-          </h2>
+          </Heading>
           {description ? <p className="mt-1 text-sm text-ink-muted">{description}</p> : null}
         </div>
 
@@ -100,7 +103,7 @@ export function ChartFrame({
             type="button"
             onClick={() => setView(view === "chart" ? "table" : "chart")}
             aria-pressed={view === "table"}
-            className="rounded border border-rule px-2 py-1 text-xs text-ink-muted hover:text-ink"
+            className="min-h-8 rounded-lg border border-rule bg-surface px-2.5 py-1 text-xs font-semibold text-ink-muted transition-colors hover:border-rule-strong hover:text-ink"
           >
             {view === "chart" ? "Table" : "Chart"}
           </button>

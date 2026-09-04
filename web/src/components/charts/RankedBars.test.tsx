@@ -37,4 +37,12 @@ describe("RankedBars", () => {
     render(<RankedBars slices={[]} label="Countries" />);
     expect(screen.getByText(/no data/i)).toBeInTheDocument();
   });
+
+  it("shows a bounded leading set when a visual limit is provided", () => {
+    render(<RankedBars slices={slices} label="Countries" limit={2} />);
+
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByText(/showing top 2 of 3/i)).toBeInTheDocument();
+    expect(screen.queryByText("unknown")).not.toBeInTheDocument();
+  });
 });

@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
+import { PageHeader } from "../components/layout/PageHeader";
 import { LinkDialog } from "../components/links/LinkDialog";
 import { LinkRow } from "../components/links/LinkRow";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Field } from "../components/ui/Field";
+import { Panel } from "../components/ui/Panel";
 import { Select } from "../components/ui/Select";
 import { useLinks, useSparklines, useTags } from "../lib/queries";
 
@@ -109,65 +111,79 @@ export default function Links() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="font-display text-3xl text-ink">Links</h1>
-        <Button aria-label="New link" onClick={() => setCreateOpen(true)}>
-          New link
-        </Button>
-      </div>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        eyebrow="Link workspace"
+        title="Links"
+        description="Find, organise and act on every short link without losing the traffic context around it."
+        actions={
+          <Button aria-label="New link" onClick={() => setCreateOpen(true)}>
+            New link
+          </Button>
+        }
+      />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <Field id="links-search" label="Search" className="flex-1">
-          <input
-            type="search"
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Search by slug, title or destination"
-            className="w-full rounded border border-rule bg-surface px-3 py-2 text-ink placeholder:text-ink-faint"
-          />
-        </Field>
-        <Field id="links-status" label="Status">
-          <Select
-            value={status}
-            onValueChange={handleStatusChange}
-            options={STATUS_OPTIONS}
-            aria-label="Status"
-          />
-        </Field>
-        {tagsQuery.isError ? (
-          // An empty "All tags"-only dropdown would be indistinguishable
-          // from a system that genuinely has no tags — this says plainly
-          // that the filter itself couldn't load, rather than implying
-          // there is nothing to filter by.
-          <div className="flex flex-col gap-1">
-            <span className="text-sm text-ink-muted">Tag</span>
-            {/* `role="status"` (not `"note"`): the tags query can fail on a
-                background refetch after the filter has already rendered
-                successfully once, and a plain `"note"` role carries no
-                implicit live region — the swap to "unavailable" would
-                change the page with nothing announced to a screen-reader
-                user who isn't looking at it. `"status"` is polite rather
-                than `"alert"`'s assertive, matching a degraded-but-usable
-                filter rather than a failed request. */}
-            <p
-              role="status"
-              className="rounded border border-dashed border-rule px-3 py-2 text-sm text-ink-faint"
-            >
-              Tag filter unavailable
-            </p>
+      <Panel className="p-4 sm:p-5">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <Field id="links-search" label="Search" className="flex-1">
+              <input
+                type="search"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Search by slug, title or destination"
+                className="min-h-11 w-full rounded-xl border border-rule bg-surface-raised px-3 py-2 text-ink outline-none placeholder:text-ink-faint focus:border-accent focus:ring-2 focus:ring-accent/20"
+              />
+            </Field>
+            <Field id="links-status" label="Status">
+              <Select
+                value={status}
+                onValueChange={handleStatusChange}
+                options={STATUS_OPTIONS}
+                aria-label="Status"
+              />
+            </Field>
+            {tagsQuery.isError ? (
+              // An empty "All tags"-only dropdown would be indistinguishable
+              // from a system that genuinely has no tags — this says plainly
+              // that the filter itself couldn't load, rather than implying
+              // there is nothing to filter by.
+              <div className="flex flex-col gap-1">
+                <span className="text-sm text-ink-muted">Tag</span>
+                {/* `role="status"` (not `"note"`): the tags query can fail on a
+                    background refetch after the filter has already rendered
+                    successfully once, and a plain `"note"` role carries no
+                    implicit live region — the swap to "unavailable" would
+                    change the page with nothing announced to a screen-reader
+                    user who isn't looking at it. `"status"` is polite rather
+                    than `"alert"`'s assertive, matching a degraded-but-usable
+                    filter rather than a failed request. */}
+                <p
+                  role="status"
+                  className="min-h-11 rounded-xl border border-dashed border-rule px-3 py-2 text-sm text-ink-faint"
+                >
+                  Tag filter unavailable
+                </p>
+              </div>
+            ) : (
+              <Field id="links-tag" label="Tag">
+                <Select
+                  value={tagId}
+                  onValueChange={handleTagChange}
+                  options={tagOptions}
+                  aria-label="Tag"
+                />
+              </Field>
+            )}
           </div>
-        ) : (
-          <Field id="links-tag" label="Tag">
-            <Select
-              value={tagId}
-              onValueChange={handleTagChange}
-              options={tagOptions}
-              aria-label="Tag"
-            />
-          </Field>
-        )}
-      </div>
+
+          {linksQuery.isSuccess ? (
+            <p role="status" className="text-xs font-semibold tracking-wide text-ink-muted">
+              {total === 1 ? "1 link" : `${total} links`}
+            </p>
+          ) : null}
+        </div>
+      </Panel>
 
       {linksQuery.isError ? (
         <p role="alert" className="text-sm text-critical">
@@ -191,11 +207,13 @@ export default function Links() {
           />
         )
       ) : (
-        <div className="flex flex-col">
-          {links.map((link) => (
-            <LinkRow key={link.id} link={link} sparkline={sparklineFor(link.id)} />
-          ))}
-        </div>
+        <Panel className="overflow-hidden px-3 sm:px-5">
+          <div className="flex flex-col">
+            {links.map((link) => (
+              <LinkRow key={link.id} link={link} sparkline={sparklineFor(link.id)} />
+            ))}
+          </div>
+        </Panel>
       )}
 
       {links.length > 0 && links.length < total && (

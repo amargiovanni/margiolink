@@ -2,10 +2,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { PageHeader } from "../components/layout/PageHeader";
 import { ConfirmDialog } from "../components/links/ConfirmDialog";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Field } from "../components/ui/Field";
+import { Panel } from "../components/ui/Panel";
 import { ApiError } from "../lib/api";
 import type { Tag } from "../lib/queries";
 import { useCreateTag, useDeleteTag, useTags } from "../lib/queries";
@@ -20,19 +22,19 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 const inputClassName =
-  "rounded border border-rule bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint";
+  "min-h-11 w-full rounded-xl border border-rule bg-surface-raised px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-accent focus:ring-2 focus:ring-accent/20";
 
 /** A decorative colour dot — never the only carrier of a tag's identity.
  *  Every place this renders sits next to the tag's name as visible text
  *  (the list below, the live preview in the create form), which is what
  *  keeps a tag distinguishable for a reader who cannot perceive its
  *  colour. */
-function TagSwatch({ color }: { color: string }) {
+function TagSwatch({ color, large = false }: { color: string; large?: boolean }) {
   const valid = HEX_SHAPE.test(color);
   return (
     <span
       aria-hidden="true"
-      className="inline-block size-4 shrink-0 rounded-full border border-rule"
+      className={`${large ? "size-11 rounded-xl" : "size-4 rounded-full"} inline-block shrink-0 border border-rule`}
       style={valid ? { backgroundColor: color } : undefined}
     />
   );
@@ -77,7 +79,7 @@ function CreateTagForm() {
     <form
       onSubmit={handleSubmit(onSubmit)}
       noValidate
-      className="flex flex-wrap items-end gap-3 border-b border-rule pb-6"
+      className="mt-6 flex flex-col items-stretch gap-4"
     >
       <Field id="tag-name" label="Name" error={errors.name?.message}>
         <input type="text" className={inputClassName} {...register("name")} />
@@ -88,15 +90,16 @@ function CreateTagForm() {
           label="Colour"
           hint="6-digit hex, e.g. #2a78d6"
           error={errors.color?.message}
+          className="flex-1"
         >
           <input
             type="text"
             placeholder="#2a78d6"
-            className={`${inputClassName} w-32`}
+            className={inputClassName}
             {...register("color")}
           />
         </Field>
-        <TagSwatch color={color} />
+        <TagSwatch color={color} large />
       </div>
       <Button type="submit" loading={isSubmitting}>
         New tag
@@ -124,7 +127,7 @@ function TagListItem({ tag }: { tag: Tag }) {
   }
 
   return (
-    <li className="flex items-center justify-between gap-3 border-b border-rule py-2 last:border-b-0">
+    <li className="flex items-center justify-between gap-3 border-b border-rule px-2 py-4 transition-colors last:border-b-0 hover:bg-surface-soft/60">
       <span className="flex items-center gap-2">
         <TagSwatch color={tag.color} />
         <span className="text-sm text-ink">{tag.name}</span>
@@ -157,29 +160,58 @@ export default function Tags() {
   const tags = tagsQuery.data?.tags ?? [];
 
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="font-display text-3xl text-ink">Tags</h1>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        eyebrow="Organisation"
+        title="Tags"
+        description="Build a small, legible taxonomy for campaigns, teams and destinations."
+      />
 
-      <CreateTagForm />
+      <div className="grid items-start gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
+        <Panel as="section" aria-labelledby="create-tag-heading" className="p-5 sm:p-6">
+          <h2 id="create-tag-heading" className="font-display text-2xl font-semibold text-ink">
+            Create a tag
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+            Use concise names and a colour that stays recognisable across the workspace.
+          </p>
+          <CreateTagForm />
+        </Panel>
 
-      {tagsQuery.isError ? (
-        <p role="alert" className="text-sm text-critical">
-          Could not load tags. Try again.
-        </p>
-      ) : tagsQuery.isPending ? (
-        <p className="text-sm text-ink-muted">Loading tags…</p>
-      ) : tags.length === 0 ? (
-        <EmptyState
-          title="No tags yet"
-          description="Create a tag above to start labelling links."
-        />
-      ) : (
-        <ul className="flex flex-col">
-          {tags.map((tag) => (
-            <TagListItem key={tag.id} tag={tag} />
-          ))}
-        </ul>
-      )}
+        <Panel as="section" aria-labelledby="tag-library-heading" className="p-5 sm:p-6">
+          <div className="flex items-baseline justify-between gap-4 border-b border-rule pb-4">
+            <h2 id="tag-library-heading" className="font-display text-2xl font-semibold text-ink">
+              Tag library
+            </h2>
+            {tagsQuery.isSuccess ? (
+              <p className="text-xs font-semibold text-ink-muted">
+                {tags.length} {tags.length === 1 ? "tag" : "tags"}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="pt-3">
+            {tagsQuery.isError ? (
+              <p role="alert" className="py-4 text-sm text-critical">
+                Could not load tags. Try again.
+              </p>
+            ) : tagsQuery.isPending ? (
+              <p className="py-4 text-sm text-ink-muted">Loading tags…</p>
+            ) : tags.length === 0 ? (
+              <EmptyState
+                title="No tags yet"
+                description="Create a tag above to start labelling links."
+              />
+            ) : (
+              <ul className="flex flex-col">
+                {tags.map((tag) => (
+                  <TagListItem key={tag.id} tag={tag} />
+                ))}
+              </ul>
+            )}
+          </div>
+        </Panel>
+      </div>
     </div>
   );
 }

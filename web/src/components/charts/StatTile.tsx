@@ -19,12 +19,14 @@ export function StatTile({
   previous,
   spark,
   hint,
+  featured = false,
 }: {
   label: string;
   value: number;
   previous?: number;
   spark?: number[];
   hint?: string;
+  featured?: boolean;
 }) {
   const delta = previous === undefined ? null : formatDelta(value, previous);
   const Icon =
@@ -43,13 +45,24 @@ export function StatTile({
         : "text-ink-muted";
 
   return (
-    <div className="rounded-lg border border-rule bg-surface-raised p-4">
+    <div
+      data-featured={featured || undefined}
+      className={`rounded-lg border p-5 shadow-sm ${
+        featured
+          ? "border-white/10 bg-rail text-rail-ink shadow-xl"
+          : "border-rule bg-surface-raised text-ink"
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm text-ink-muted">{label}</p>
+        <p
+          className={`text-xs font-semibold tracking-wide ${featured ? "text-rail-muted" : "text-ink-muted"}`}
+        >
+          {label}
+        </p>
         {spark ? <Sparkline values={spark} label={`${label} trend`} /> : null}
       </div>
 
-      <output className="mt-2 block font-display text-4xl leading-none tabular">
+      <output className="mt-4 block font-display text-4xl leading-none font-semibold tracking-tight tabular sm:text-5xl">
         {formatCount(value)}
       </output>
 
@@ -74,7 +87,13 @@ export function StatTile({
         </p>
       ) : null}
 
-      {hint ? <p className="mt-1 text-xs text-ink-faint">{hint}</p> : null}
+      {hint ? (
+        <p
+          className={`mt-2 text-xs leading-relaxed ${featured ? "text-rail-muted" : "text-ink-faint"}`}
+        >
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }
