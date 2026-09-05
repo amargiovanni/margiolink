@@ -176,7 +176,7 @@ describe("password-protected links", () => {
     expect(rows.at(-1)?.outcome).toBe("password_failed");
   });
 
-  it("redirects on the correct password and sets an access cookie", async () => {
+  it("returns a safe navigation handoff on the correct password and sets an access cookie", async () => {
     await createProtected("hunter2");
 
     const res = await SELF.fetch("https://link.test/secret", {
@@ -186,8 +186,9 @@ describe("password-protected links", () => {
       redirect: "manual",
     });
 
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("https://example.com/private");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    expect(res.headers.get("content-security-policy")).toContain("form-action 'self'");
     expect(res.headers.get("set-cookie")).toContain("ml_pw_secret=");
     expect(res.headers.get("set-cookie")).toContain("Max-Age=600");
     const token = (res.headers.get("set-cookie") ?? "").match(/ml_pw_secret=([^;]+)/)?.[1];
@@ -195,7 +196,45 @@ describe("password-protected links", () => {
     expect(version).toBe("v2");
     expect(Number(expiry)).toBeGreaterThanOrEqual(NOW_SECONDS() + 599);
     expect(Number(expiry)).toBeLessThanOrEqual(NOW_SECONDS() + 600);
-    expect((await clickRows()).at(-1)?.outcome).toBe("redirect");
+    const html = await res.text();
+    expect(html).toContain(
+      '<meta http-equiv="refresh" content="0;url=https://example.com/private">',
+    );
+    expect(html).toContain('<a href="https://example.com/private" rel="noreferrer">continue</a>');
+    expect(html).not.toContain("hunter2");
+    const rows = await clickRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.outcome).toBe("redirect");
+  });
+
+  it("escapes an untrusted stored destination in both handoff attributes", async () => {
+    const salt = randomSalt();
+    const target = `https://example.com/"><script>alert("x")</script>?a=1&b=2`;
+    await createLink(
+      env.DB,
+      {
+        slug: "unsafe-target",
+        targetUrl: target,
+        passwordSalt: salt,
+        passwordHash: await hashPassword("hunter2", salt),
+      },
+      NOW_SECONDS(),
+    );
+
+    const res = await SELF.fetch("https://link.test/unsafe-target", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=hunter2",
+      redirect: "manual",
+    });
+
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).not.toContain("<script>");
+    expect(html).toContain(
+      "https://example.com/&quot;&gt;&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;?a=1&amp;b=2",
+    );
+    expect(html.match(/https:\/\/example\.com\//g)).toHaveLength(2);
   });
 
   it.each([
@@ -379,8 +418,8 @@ describe("password-protected links", () => {
       { redirect: "manual" },
     );
 
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("https://example.com/private");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("https://example.com/private");
   });
 
   it("rejects a streamed form above 16 KiB before rate-limit or click writes", async () => {
@@ -472,15 +511,15 @@ describe("the password interstitial is throttled", () => {
 
     const res = await submit("other", "hunter2");
 
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("https://example.com/other");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("https://example.com/other");
   });
 
   it("clears the budget once the correct password is accepted", async () => {
     await createProtected("guarded", "hunter2");
     for (let i = 0; i < 4; i++) await submit("guarded", `wrong${i}`);
 
-    expect((await submit("guarded", "hunter2")).status).toBe(302);
+    expect((await submit("guarded", "hunter2")).status).toBe(200);
 
     const statuses: number[] = [];
     for (let i = 0; i < 7; i++) {

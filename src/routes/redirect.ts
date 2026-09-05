@@ -19,7 +19,7 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function page(title: string, body: string): string {
+function page(title: string, body: string, head = ""): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -27,6 +27,7 @@ function page(title: string, body: string): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>${escapeHtml(title)}</title>
+${head}
 <style>
 :root { color-scheme: light dark; --bg: #fbfbfd; --fg: #16161a; --muted: #6b6b76; --card: #fff; --border: #e3e3e8; --accent: #4338ca; }
 @media (prefers-color-scheme: dark) {
@@ -84,6 +85,16 @@ function passwordPage(slug: string, error: "wrong" | "throttled" | null): string
 
 function noticePage(title: string, message: string): string {
   return page(title, `<h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p>`);
+}
+
+function handoffPage(target: string): string {
+  const safeTarget = escapeHtml(target);
+  return page(
+    "Opening link",
+    `<h1>Password accepted</h1>
+     <p>Opening your link. If nothing happens, <a href="${safeTarget}" rel="noreferrer">continue</a>.</p>`,
+    `<meta http-equiv="refresh" content="0;url=${safeTarget}">`,
+  );
 }
 
 function isExpired(link: LinkRow, now: number): boolean {
@@ -248,6 +259,6 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
     c.executionCtx.waitUntil(
       recordClick(c.env, { linkId: link.id, slug, outcome: "redirect", context, now }),
     );
-    return c.redirect(link.target_url, 302);
+    return c.html(handoffPage(link.target_url));
   });
 }
