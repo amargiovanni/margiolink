@@ -10,10 +10,15 @@ import {
   type TopLinksResponse,
   useCreateLink,
   useDeleteLink,
+  useDimension,
   useInfiniteLinks,
   useLinks,
+  useLive,
   useRestoreLink,
+  useSparklines,
   useSummary,
+  useTimeseries,
+  useTopLinks,
   useUpdateLink,
 } from "./queries";
 
@@ -177,5 +182,46 @@ describe("links query cache", () => {
     await waitFor(() => expect(listRequests).toBe(4));
     await act(() => result.current.restore.mutateAsync(1));
     await waitFor(() => expect(listRequests).toBe(5));
+  });
+});
+
+describe("statistics freshness", () => {
+  it("reuses non-live stats for 60 seconds while live data remains immediately stale", async () => {
+    const clock = vi.spyOn(Date, "now");
+    const now = Date.now();
+    clock.mockReturnValue(now);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ clicks: [], slices: [], buckets: [], links: [], series: {} }),
+      ),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    function wrapper({ children }: { children: ReactNode }) {
+      return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    }
+    const range = { from: 0, to: 100 };
+    const useStats = () => [
+      useSummary(range),
+      useTimeseries(range, "day"),
+      useDimension(range, "city"),
+      useTopLinks(range),
+      useSparklines(),
+      useLive(),
+    ];
+    const first = renderHook(useStats, { wrapper });
+    await waitFor(() => expect(first.result.current.every((query) => query.isSuccess)).toBe(true));
+    first.unmount();
+    clock.mockReturnValue(now + 59_000);
+    const second = renderHook(useStats, { wrapper });
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(7));
+    expect(String(vi.mocked(fetch).mock.calls[6]?.[0])).toContain("/live");
+    second.unmount();
+    clock.mockReturnValue(now + 60_000);
+    const third = renderHook(useStats, { wrapper });
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(13));
+    third.unmount();
+    clock.mockRestore();
+    client.clear();
   });
 });

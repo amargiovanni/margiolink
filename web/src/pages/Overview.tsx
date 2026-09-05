@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Link as RouterLink } from "react-router";
 import { ChartFrame, chartStatus } from "../components/charts/ChartFrame";
+import { DeferredPanel } from "../components/charts/DeferredPanel";
 import { HEATMAP_CELLS, Heatmap } from "../components/charts/Heatmap";
 import { RankedBars } from "../components/charts/RankedBars";
 import { StatTile } from "../components/charts/StatTile";
@@ -30,13 +31,8 @@ function toTable(
  *  as `LinkDetail`'s `DimensionPanel`, kept local rather than shared since
  *  this page has no optional/withFlags variants to justify the extra prop
  *  surface a shared component would need. */
-function DimensionPanel({
-  title,
-  query,
-}: {
-  title: string;
-  query: ReturnType<typeof useDimension>;
-}) {
+function DimensionPanel({ title, range, name }: { title: string; range: Range; name: string }) {
+  const query = useDimension(range, name);
   return (
     <ChartFrame
       title={title}
@@ -125,6 +121,51 @@ function TopLinksPanel({ range }: { range: Range }) {
   );
 }
 
+function CountryPanel({ range }: { range: Range }) {
+  const countryQuery = useDimension(range, "country");
+  return (
+    <ChartFrame
+      title="Clicks by country"
+      table={toTable("Country", countryQuery.data?.slices ?? [])}
+      status={chartStatus(countryQuery)}
+      errorMessage="Could not load the map."
+    >
+      {countryQuery.isError ? (
+        <p role="alert" className="py-6 text-center text-sm text-critical">
+          Could not load the map.
+        </p>
+      ) : countryQuery.isPending ? (
+        <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
+      ) : (
+        <WorldMap slices={countryQuery.data.slices} listLimit={6} />
+      )}
+    </ChartFrame>
+  );
+}
+
+function HourlyPanel({ range }: { range: Range }) {
+  const hourlyQuery = useDimension(range, "dow_hour", HEATMAP_CELLS);
+  return (
+    <ChartFrame
+      title="Activity by hour"
+      description="Clicks by day of week and hour."
+      table={toTable("Hour", hourlyQuery.data?.slices ?? [])}
+      status={chartStatus(hourlyQuery)}
+      errorMessage="Could not load the heatmap."
+    >
+      {hourlyQuery.isError ? (
+        <p role="alert" className="py-6 text-center text-sm text-critical">
+          Could not load the heatmap.
+        </p>
+      ) : hourlyQuery.isPending ? (
+        <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
+      ) : (
+        <Heatmap slices={hourlyQuery.data.slices} />
+      )}
+    </ChartFrame>
+  );
+}
+
 /** Bot share as a fraction of *every* recorded hit, `bots / (clicks +
  *  bots)` — `summary.clicks` already excludes bots (`SUM(CASE WHEN is_bot =
  *  0 ...)`), so dividing by `clicks` alone would use the wrong denominator
@@ -185,10 +226,6 @@ export default function Overview() {
 
   const summaryQuery = useSummary(range);
   const timeseriesQuery = useTimeseries(range, granularity);
-  const countryQuery = useDimension(range, "country");
-  const deviceQuery = useDimension(range, "device");
-  const channelQuery = useDimension(range, "referrer_type");
-  const hourlyQuery = useDimension(range, "dow_hour", HEATMAP_CELLS);
 
   const buckets = timeseriesQuery.data?.buckets ?? [];
   const clickSpark = timeseriesQuery.isSuccess ? buckets.map((b) => b.clicks) : undefined;
@@ -286,48 +323,27 @@ export default function Overview() {
           one pads it with a few hundred pixels of nothing. A card is as tall
           as what is in it. */}
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[0.82fr_1.18fr]">
-        <TopLinksPanel range={range} />
+        <DeferredPanel title="Top links">
+          <TopLinksPanel range={range} />
+        </DeferredPanel>
 
-        <ChartFrame
-          title="Clicks by country"
-          table={toTable("Country", countryQuery.data?.slices ?? [])}
-          status={chartStatus(countryQuery)}
-          errorMessage="Could not load the map."
-        >
-          {countryQuery.isError ? (
-            <p role="alert" className="py-6 text-center text-sm text-critical">
-              Could not load the map.
-            </p>
-          ) : countryQuery.isPending ? (
-            <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
-          ) : (
-            <WorldMap slices={countryQuery.data.slices} listLimit={6} />
-          )}
-        </ChartFrame>
+        <DeferredPanel title="Clicks by country">
+          <CountryPanel range={range} />
+        </DeferredPanel>
       </div>
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-        <DimensionPanel title="Devices" query={deviceQuery} />
-        <DimensionPanel title="Channels" query={channelQuery} />
+        <DeferredPanel title="Devices">
+          <DimensionPanel title="Devices" range={range} name="device" />
+        </DeferredPanel>
+        <DeferredPanel title="Channels">
+          <DimensionPanel title="Channels" range={range} name="referrer_type" />
+        </DeferredPanel>
       </div>
 
-      <ChartFrame
-        title="Activity by hour"
-        description="Clicks by day of week and hour."
-        table={toTable("Hour", hourlyQuery.data?.slices ?? [])}
-        status={chartStatus(hourlyQuery)}
-        errorMessage="Could not load the heatmap."
-      >
-        {hourlyQuery.isError ? (
-          <p role="alert" className="py-6 text-center text-sm text-critical">
-            Could not load the heatmap.
-          </p>
-        ) : hourlyQuery.isPending ? (
-          <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
-        ) : (
-          <Heatmap slices={hourlyQuery.data.slices} />
-        )}
-      </ChartFrame>
+      <DeferredPanel title="Activity by hour">
+        <HourlyPanel range={range} />
+      </DeferredPanel>
     </div>
   );
 }

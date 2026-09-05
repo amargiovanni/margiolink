@@ -142,6 +142,7 @@ export function useMeta() {
 
 export function useSummary(range: Range) {
   return useQuery({
+    staleTime: 60_000,
     queryKey: keys.stats("summary", range),
     queryFn: () => api.get<SummaryResponse>("/api/stats/summary", { ...range }),
   });
@@ -149,6 +150,7 @@ export function useSummary(range: Range) {
 
 export function useTimeseries(range: Range, granularity: "hour" | "day" | "week") {
   return useQuery({
+    staleTime: 60_000,
     queryKey: keys.stats("timeseries", { ...range, granularity }),
     queryFn: () => api.get<TimeseriesResponse>("/api/stats/timeseries", { ...range, granularity }),
   });
@@ -156,6 +158,7 @@ export function useTimeseries(range: Range, granularity: "hour" | "day" | "week"
 
 export function useDimension(range: Range, name: string, limit = 20) {
   return useQuery({
+    staleTime: 60_000,
     queryKey: keys.stats("dimension", { ...range, name, limit }),
     queryFn: () => api.get<DimensionResponse>("/api/stats/dimension", { ...range, name, limit }),
   });
@@ -180,6 +183,7 @@ export interface TopLinksResponse {
  *  along with `range`, matching `useDimension`'s pattern. */
 export function useTopLinks(range: Range, limit = 5) {
   return useQuery({
+    staleTime: 60_000,
     queryKey: keys.stats("top-links", { ...range, limit }),
     queryFn: () => api.get<TopLinksResponse>("/api/stats/top-links", { ...range, limit }),
   });
@@ -219,6 +223,7 @@ export interface LiveClick {
 
 export function useSparklines(days = 7) {
   return useQuery({
+    staleTime: 60_000,
     queryKey: keys.stats("sparklines", days),
     queryFn: () =>
       api.get<{ days: number; series: Record<string, number[]> }>("/api/stats/sparklines", {
