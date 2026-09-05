@@ -59,19 +59,24 @@ export async function tagsForLinks(
   const grouped = new Map<number, TagRow[]>();
   if (linkIds.length === 0) return grouped;
 
-  const placeholders = linkIds.map(() => "?").join(", ");
-  const { results } = await db
-    .prepare(
-      `SELECT lt.link_id AS link_id, t.id, t.name, t.color
-       FROM link_tags lt
-       JOIN tags t ON t.id = lt.tag_id
-       WHERE lt.link_id IN (${placeholders})
-       ORDER BY t.name`,
-    )
-    .bind(...linkIds)
-    .all<TagRow & { link_id: number }>();
+  const rows: (TagRow & { link_id: number })[] = [];
+  for (let offset = 0; offset < linkIds.length; offset += 100) {
+    const batch = linkIds.slice(offset, offset + 100);
+    const placeholders = batch.map(() => "?").join(", ");
+    const { results } = await db
+      .prepare(
+        `SELECT lt.link_id AS link_id, t.id, t.name, t.color
+         FROM link_tags lt
+         JOIN tags t ON t.id = lt.tag_id
+         WHERE lt.link_id IN (${placeholders})
+         ORDER BY t.name`,
+      )
+      .bind(...batch)
+      .all<TagRow & { link_id: number }>();
+    rows.push(...results);
+  }
 
-  for (const row of results) {
+  for (const row of rows) {
     const list = grouped.get(row.link_id) ?? [];
     list.push({ id: row.id, name: row.name, color: row.color });
     grouped.set(row.link_id, list);

@@ -6,6 +6,8 @@ let cookie = "";
 
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM clicks").run();
+  await env.DB.prepare("DELETE FROM link_tags").run();
+  await env.DB.prepare("DELETE FROM tags").run();
   await env.DB.prepare("DELETE FROM links").run();
   await env.DB.prepare("DELETE FROM admin_sessions").run();
 
@@ -123,6 +125,54 @@ describe("GET /api/links", () => {
     const res = await api("/api/links?search=findm");
     const body = (await res.json()) as { links: unknown[] };
     expect(body.links).toHaveLength(1);
+  });
+
+  it("hydrates tags for all 120 requested links without exceeding D1's binding limit", async () => {
+    await env.DB.batch(
+      Array.from({ length: 120 }, (_, index) =>
+        env.DB.prepare(
+          "INSERT INTO links (slug, target_url, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)",
+        ).bind(`bulk-${String(index).padStart(3, "0")}`, `https://example.com/${index}`, 1, 1),
+      ),
+    );
+    const tag = await env.DB.prepare("INSERT INTO tags (name, color) VALUES (?, ?) RETURNING id")
+      .bind("bulk", "#199e70")
+      .first<{ id: number }>();
+    const ids = await env.DB.prepare("SELECT id FROM links ORDER BY id").all<{ id: number }>();
+    await env.DB.batch(
+      ids.results.map(({ id }) =>
+        env.DB.prepare("INSERT INTO link_tags (link_id, tag_id) VALUES (?, ?)").bind(id, tag?.id),
+      ),
+    );
+
+    const res = await api("/api/links?limit=120");
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      links: { slug: string; tags: { name: string }[] }[];
+      total: number;
+    };
+    expect(body.total).toBe(120);
+    expect(body.links).toHaveLength(120);
+    expect(body.links[0]).toMatchObject({ slug: "bulk-119", tags: [{ name: "bulk" }] });
+    expect(body.links[119]).toMatchObject({ slug: "bulk-000", tags: [{ name: "bulk" }] });
+  });
+
+  it.each([
+    ["48 ASCII bytes", "a".repeat(48)],
+    ["48 multibyte UTF-8 bytes", "€".repeat(16)],
+  ])("accepts a search at the %s boundary", async (_case, search) => {
+    const res = await api(`/api/links?${new URLSearchParams({ search })}`);
+    expect(res.status).toBe(200);
+  });
+
+  it.each([
+    ["49 ASCII bytes", "a".repeat(49)],
+    ["49 multibyte UTF-8 bytes", `${"€".repeat(16)}a`],
+  ])("rejects a search over the %s boundary with a query error", async (_case, search) => {
+    const res = await api(`/api/links?${new URLSearchParams({ search })}`);
+    expect(res.status).toBe(400);
+    expect((await res.json()) as unknown).toEqual({ error: "invalid_query" });
   });
 });
 

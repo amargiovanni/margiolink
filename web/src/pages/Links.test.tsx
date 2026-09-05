@@ -32,6 +32,18 @@ const LINKS = {
   total: 1,
 };
 
+function numberedLink(index: number) {
+  return {
+    ...LINK,
+    id: index,
+    slug: `link-${String(index).padStart(3, "0")}`,
+    shortUrl: `https://link.test/link-${String(index).padStart(3, "0")}`,
+    targetUrl: `https://example.com/${index}`,
+    title: `Link ${index}`,
+    tags: [],
+  };
+}
+
 function stub(routes: Record<string, unknown>) {
   vi.stubGlobal(
     "fetch",
@@ -112,6 +124,174 @@ describe("Links", () => {
       const searched = calls.some((c) => String(c[0]).includes("search=spr"));
       expect(searched).toBe(true);
     });
+  });
+
+  it("loads fixed 20-link pages past 200 records without rendering duplicate links", async () => {
+    const allLinks = Array.from({ length: 225 }, (_, index) => numberedLink(index + 1));
+    const linkRequests: URL[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = new URL(String(input), "https://link.test");
+        if (url.pathname === "/api/links") {
+          linkRequests.push(url);
+          const offset = Number(url.searchParams.get("offset") ?? 0);
+          const links = allLinks.slice(offset, offset + 20);
+          if (offset === 20) links.unshift(allLinks[19] as (typeof allLinks)[number]);
+          return Response.json({ links, total: allLinks.length });
+        }
+        if (url.pathname === "/api/tags") return Response.json({ tags: [] });
+        if (url.pathname === "/api/stats/sparklines") {
+          return Response.json({ days: 7, series: {} });
+        }
+        return Response.json({ error: "not_found" }, { status: 404 });
+      }),
+    );
+    renderLinks();
+    await screen.findByText("link-001");
+
+    for (let page = 1; page <= 10; page++) {
+      await userEvent.click(screen.getByRole("button", { name: /load more/i }));
+      await screen.findByText(`link-${String(page * 20 + 1).padStart(3, "0")}`);
+    }
+
+    expect(screen.getByText("link-201")).toBeInTheDocument();
+    expect(screen.getAllByText("link-020")).toHaveLength(1);
+    expect(linkRequests.map((url) => url.searchParams.get("limit"))).toEqual(
+      new Array(11).fill("20"),
+    );
+    expect(linkRequests.map((url) => url.searchParams.get("offset"))).toEqual([
+      "0",
+      "20",
+      "40",
+      "60",
+      "80",
+      "100",
+      "120",
+      "140",
+      "160",
+      "180",
+      "200",
+    ]);
+  });
+
+  it("keeps loaded links visible when the next page fails and retries that page", async () => {
+    let pageAttempts = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = new URL(String(input), "https://link.test");
+        if (url.pathname === "/api/links") {
+          const offset = Number(url.searchParams.get("offset") ?? 0);
+          if (offset === 20 && pageAttempts++ === 0) {
+            return Response.json({ error: "temporary" }, { status: 503 });
+          }
+          return Response.json({
+            links: Array.from({ length: 20 }, (_, index) => numberedLink(offset + index + 1)),
+            total: 40,
+          });
+        }
+        if (url.pathname === "/api/tags") return Response.json({ tags: [] });
+        if (url.pathname === "/api/stats/sparklines") {
+          return Response.json({ days: 7, series: {} });
+        }
+        return Response.json({ error: "not_found" }, { status: 404 });
+      }),
+    );
+    renderLinks();
+    await screen.findByText("link-001");
+
+    await userEvent.click(screen.getByRole("button", { name: /load more/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not load more/i);
+    expect(screen.getByText("link-001")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /try.*again|retry/i }));
+    expect(await screen.findByText("link-021")).toBeInTheDocument();
+    expect(pageAttempts).toBe(2);
+  });
+
+  it("resets pagination when search, status, and tag filters change", async () => {
+    const linkRequests: URL[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = new URL(String(input), "https://link.test");
+        if (url.pathname === "/api/links") {
+          linkRequests.push(url);
+          const offset = Number(url.searchParams.get("offset") ?? 0);
+          const marker = url.searchParams.get("search")
+            ? 100
+            : url.searchParams.get("status")
+              ? 200
+              : url.searchParams.get("tagId")
+                ? 300
+                : 0;
+          return Response.json({
+            links: Array.from({ length: 20 }, (_, index) =>
+              numberedLink(marker + offset + index + 1),
+            ),
+            total: 40,
+          });
+        }
+        if (url.pathname === "/api/tags") {
+          return Response.json({ tags: [{ id: 7, name: "spring", color: "#199e70" }] });
+        }
+        if (url.pathname === "/api/stats/sparklines") {
+          return Response.json({ days: 7, series: {} });
+        }
+        return Response.json({ error: "not_found" }, { status: 404 });
+      }),
+    );
+    renderLinks();
+    await screen.findByText("link-001");
+    await userEvent.click(screen.getByRole("button", { name: /load more/i }));
+    await screen.findByText("link-021");
+
+    await userEvent.type(screen.getByRole("searchbox", { name: /search/i }), "spring");
+    await screen.findByText("link-101");
+    expect(screen.queryByText("link-121")).not.toBeInTheDocument();
+
+    await userEvent.clear(screen.getByRole("searchbox", { name: /search/i }));
+    await screen.findByText("link-001");
+    await userEvent.click(screen.getByRole("combobox", { name: /^status$/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Inactive" }));
+    await screen.findByText("link-201");
+
+    await userEvent.click(screen.getByRole("combobox", { name: /^status$/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "All statuses" }));
+    await screen.findByText("link-001");
+    await userEvent.click(screen.getByRole("combobox", { name: /^tag$/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "spring" }));
+    await screen.findByText("link-301");
+
+    const filteredRequests = linkRequests.filter(
+      (url) =>
+        url.searchParams.has("search") ||
+        url.searchParams.has("status") ||
+        url.searchParams.has("tagId"),
+    );
+    expect(filteredRequests.every((url) => url.searchParams.get("offset") === "0")).toBe(true);
+  });
+
+  it("explains the 48-byte search limit and keeps current results for an invalid search", async () => {
+    stub({
+      "/api/links": LINKS,
+      "/api/tags": { tags: [] },
+      "/api/stats/sparklines": { days: 7, series: {} },
+    });
+    renderLinks();
+    await screen.findByText("launch");
+
+    await userEvent.type(screen.getByRole("searchbox", { name: /search/i }), `${"€".repeat(16)}a`);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/48.*bytes/i);
+    expect(screen.getByText("launch")).toBeInTheDocument();
+    const linkRequests = (
+      globalThis.fetch as unknown as { mock: { calls: [string][] } }
+    ).mock.calls.filter(
+      ([input]) => new URL(String(input), "https://link.test").pathname === "/api/links",
+    );
+    expect(linkRequests).toHaveLength(1);
   });
 
   it("offers an empty state with a way forward when there are no links", async () => {

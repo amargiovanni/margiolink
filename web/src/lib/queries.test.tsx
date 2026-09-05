@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
@@ -8,7 +8,13 @@ import {
   type SummaryResponse,
   type TimeseriesResponse,
   type TopLinksResponse,
+  useCreateLink,
+  useDeleteLink,
+  useInfiniteLinks,
+  useLinks,
+  useRestoreLink,
   useSummary,
+  useUpdateLink,
 } from "./queries";
 
 const STATS_META: StatsMeta = {
@@ -85,5 +91,91 @@ describe("useSummary — cross-link cache isolation", () => {
     // the same cache entry across this re-render, and this would time out
     // still showing link 1's value.
     await waitFor(() => expect(result.current.data?.current.clicks).toBe(222));
+  });
+});
+
+describe("links query cache", () => {
+  const link = {
+    id: 1,
+    slug: "cached",
+    shortUrl: "https://link.test/cached",
+    targetUrl: "https://example.com/",
+    title: null,
+    description: null,
+    hasPassword: false,
+    expiresAt: null,
+    expiredUrl: null,
+    isActive: true,
+    createdAt: 1,
+    updatedAt: 1,
+    deletedAt: null,
+    tags: [],
+  };
+
+  it("keeps the command palette's single page separate from dashboard pages", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = new URL(String(input), "https://link.test");
+        const slug = url.searchParams.get("limit") === "5" ? "palette" : "dashboard";
+        return Response.json({ links: [{ ...link, slug }], total: 1 });
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    function wrapper({ children }: { children: ReactNode }) {
+      return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    }
+
+    const { result } = renderHook(
+      () => ({ single: useLinks({ limit: 5, offset: 0 }), infinite: useInfiniteLinks({}) }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.single.data?.links[0]?.slug).toBe("palette"));
+    await waitFor(() =>
+      expect(result.current.infinite.data?.pages[0]?.links[0]?.slug).toBe("dashboard"),
+    );
+  });
+
+  it("refetches dashboard pages after create, update, delete, and restore", async () => {
+    let listRequests = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string, init?: RequestInit) => {
+        const url = new URL(String(input), "https://link.test");
+        if ((init?.method ?? "GET") === "GET") {
+          listRequests++;
+          return Response.json({ links: [link], total: 1 });
+        }
+        if (url.pathname === "/api/links" || url.pathname === "/api/links/1") {
+          return Response.json({ link });
+        }
+        return Response.json({ ok: true });
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    function wrapper({ children }: { children: ReactNode }) {
+      return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    }
+    const { result } = renderHook(
+      () => ({
+        list: useInfiniteLinks({}),
+        create: useCreateLink(),
+        update: useUpdateLink(),
+        remove: useDeleteLink(),
+        restore: useRestoreLink(),
+      }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.list.isSuccess).toBe(true));
+
+    await act(() => result.current.create.mutateAsync({ targetUrl: "https://example.com" }));
+    await waitFor(() => expect(listRequests).toBe(2));
+    await act(() => result.current.update.mutateAsync({ id: 1, title: "Changed" }));
+    await waitFor(() => expect(listRequests).toBe(3));
+    await act(() => result.current.remove.mutateAsync(1));
+    await waitFor(() => expect(listRequests).toBe(4));
+    await act(() => result.current.restore.mutateAsync(1));
+    await waitFor(() => expect(listRequests).toBe(5));
   });
 });

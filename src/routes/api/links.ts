@@ -51,7 +51,10 @@ const updateSchema = createSchema.partial().extend({
 });
 
 const listSchema = z.object({
-  search: z.string().optional(),
+  search: z
+    .string()
+    .refine((value) => new TextEncoder().encode(value).byteLength <= 48)
+    .optional(),
   status: z.enum(["all", "active", "inactive", "expired", "deleted"]).optional(),
   tagId: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),

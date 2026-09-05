@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 
 export interface Tag {
@@ -77,6 +77,7 @@ export interface Meta {
 
 export const keys = {
   links: (params?: unknown) => ["links", params ?? {}] as const,
+  infiniteLinks: (params?: unknown) => ["links", "infinite", params ?? {}] as const,
   link: (id: number) => ["link", id] as const,
   tags: () => ["tags"] as const,
   sessions: () => ["sessions"] as const,
@@ -94,6 +95,27 @@ export function useLinks(params: {
   return useQuery({
     queryKey: keys.links(params),
     queryFn: () => api.get<{ links: Link[]; total: number }>("/api/links", params),
+  });
+}
+
+const LINKS_PAGE_SIZE = 20;
+
+export function useInfiniteLinks(params: { search?: string; status?: string; tagId?: number }) {
+  return useInfiniteQuery({
+    queryKey: keys.infiniteLinks(params),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      api.get<{ links: Link[]; total: number }>("/api/links", {
+        ...params,
+        limit: LINKS_PAGE_SIZE,
+        offset: pageParam,
+      }),
+    getNextPageParam: (lastPage, _pages, lastPageParam) => {
+      if (lastPage.links.length === 0 || lastPageParam + LINKS_PAGE_SIZE >= lastPage.total) {
+        return undefined;
+      }
+      return lastPageParam + LINKS_PAGE_SIZE;
+    },
   });
 }
 

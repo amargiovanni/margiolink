@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { PageHeader } from "../components/layout/PageHeader";
 import { LinkDialog } from "../components/links/LinkDialog";
@@ -8,9 +8,9 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { Field } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import { Select } from "../components/ui/Select";
-import { useLinks, useSparklines, useTags } from "../lib/queries";
+import { type Link, useInfiniteLinks, useSparklines, useTags } from "../lib/queries";
+import { linkSearchIsTooLong, MAX_LINK_SEARCH_BYTES } from "../lib/search";
 
-const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 250;
 
 const STATUS_OPTIONS = [
@@ -34,9 +34,9 @@ export default function Links() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [tagId, setTagId] = useState("all");
-  const [limit, setLimit] = useState(PAGE_SIZE);
   const [createOpen, setCreateOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const searchTooLong = linkSearchIsTooLong(searchInput);
 
   // The command palette's "New link" action can't reach this page's own
   // dialog state directly — it navigates here with `?new=1` instead, and
@@ -56,35 +56,30 @@ export default function Links() {
   }, [searchParams, setSearchParams]);
 
   // Debounced into the query key: the fetch only fires once typing settles
-  // for 250ms, rather than once per keystroke. A filter change also resets
-  // whatever page depth the reader had reached — done here and in the two
-  // Select handlers below, rather than in a separate effect keyed on their
-  // values, since a reset that only sets state (never reads the values it
-  // is "triggered by") has nothing for exhaustive-deps to check.
+  // for 250ms, rather than once per keystroke. Search, status, and tag are
+  // each part of the infinite query key, so changing any filter starts that
+  // result set at its own first page. An overlong search remains in the
+  // input for correction without replacing the last valid result set.
   useEffect(() => {
+    if (searchTooLong) return;
     const id = window.setTimeout(() => {
       setSearch(searchInput);
-      setLimit(PAGE_SIZE);
     }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(id);
-  }, [searchInput]);
+  }, [searchInput, searchTooLong]);
 
   function handleStatusChange(value: string) {
     setStatus(value);
-    setLimit(PAGE_SIZE);
   }
 
   function handleTagChange(value: string) {
     setTagId(value);
-    setLimit(PAGE_SIZE);
   }
 
-  const linksQuery = useLinks({
+  const linksQuery = useInfiniteLinks({
     search: search || undefined,
     status: status === "all" ? undefined : status,
     tagId: tagId === "all" ? undefined : Number(tagId),
-    limit,
-    offset: 0,
   });
   const tagsQuery = useTags();
   const sparklinesQuery = useSparklines(7);
@@ -94,8 +89,14 @@ export default function Links() {
     ...(tagsQuery.data?.tags.map((tag) => ({ value: String(tag.id), label: tag.name })) ?? []),
   ];
 
-  const links = linksQuery.data?.links ?? [];
-  const total = linksQuery.data?.total ?? 0;
+  const links = useMemo(() => {
+    const unique = new Map<number, Link>();
+    for (const page of linksQuery.data?.pages ?? []) {
+      for (const link of page.links) unique.set(link.id, link);
+    }
+    return [...unique.values()];
+  }, [linksQuery.data]);
+  const total = linksQuery.data?.pages.at(-1)?.total ?? 0;
 
   // `undefined` here is genuinely ambiguous: it means "still loading" while
   // the query is in flight, but once `useSparklines` has succeeded it also
@@ -126,7 +127,16 @@ export default function Links() {
       <Panel className="p-4 sm:p-5">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <Field id="links-search" label="Search" className="flex-1">
+            <Field
+              id="links-search"
+              label="Search"
+              className="flex-1"
+              error={
+                searchTooLong
+                  ? `Search is too long. Use ${MAX_LINK_SEARCH_BYTES} bytes or fewer; accented letters and symbols may use more than one byte.`
+                  : undefined
+              }
+            >
               <input
                 type="search"
                 value={searchInput}
@@ -185,7 +195,7 @@ export default function Links() {
         </div>
       </Panel>
 
-      {linksQuery.isError ? (
+      {linksQuery.isError && links.length === 0 ? (
         <p role="alert" className="text-sm text-critical">
           Could not load links. Try again.
         </p>
@@ -216,10 +226,24 @@ export default function Links() {
         </Panel>
       )}
 
-      {links.length > 0 && links.length < total && (
+      {linksQuery.isFetchNextPageError ? (
+        <p role="alert" className="text-center text-sm text-critical">
+          Could not load more links. Your loaded links are still here.
+        </p>
+      ) : null}
+
+      {links.length > 0 && (linksQuery.hasNextPage || linksQuery.isFetchNextPageError) && (
         <div className="flex justify-center pt-2">
-          <Button variant="ghost" onClick={() => setLimit((current) => current + PAGE_SIZE)}>
-            Load more
+          <Button
+            variant="ghost"
+            disabled={linksQuery.isFetchingNextPage}
+            onClick={() => void linksQuery.fetchNextPage()}
+          >
+            {linksQuery.isFetchingNextPage
+              ? "Loading more…"
+              : linksQuery.isFetchNextPageError
+                ? "Try loading more again"
+                : "Load more"}
           </Button>
         </div>
       )}
