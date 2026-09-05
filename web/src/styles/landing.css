@@ -1025,7 +1025,9 @@ h1 em {
     inset: 8% -1% 10%;
   }
   .link-sculpture {
-    margin-top: 3%;
+    width: 100%;
+    max-width: 100%;
+    margin: 3% 0 0;
   }
   .link-label {
     bottom: 55px;

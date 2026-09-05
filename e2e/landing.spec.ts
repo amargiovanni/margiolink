@@ -208,7 +208,7 @@ for (const theme of ["light", "dark"] as const) {
   });
 }
 
-for (const width of [320, 390, 768, 1440]) {
+for (const width of [320, 390, 768, 900, 1440]) {
   test(`keeps the landing and its actions within a ${width}px viewport`, async ({
     page,
   }, testInfo) => {
