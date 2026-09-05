@@ -55,7 +55,10 @@ and count semantics were held constant.
    Linux Chromium showed that `form-action 'self'` applied across the external
    302 after the password POST. A successful POST now returns 200 with the
    grant cookie and a same-origin HTML handoff that starts a fresh top-level
-   navigation, with an escaped, visible fallback link. The CSP remains strict.
+   navigation, with an escaped, visible fallback link. If the protected link
+   expires while its form is open, POST uses the same CSP-safe navigation shape
+   for the configured expiry fallback without issuing a grant. GET retains its
+   302 fallback behavior, and the CSP remains strict.
 
 ## Statistics cache boundary
 
@@ -72,20 +75,23 @@ session identity. Responses sent to clients remain private/no-store.
 The dashboard's non-live statistics use a 60-second client freshness window.
 The live feed keeps its existing 10-second polling and pause behavior. Cache
 tests use the real Worker route, D1, and Cache API and preserve raw query
-results, including suppression of sensitive low-count dimensions.
+results, including unsuppressed low-count dimensions. Aggregate rollup
+suppression is unchanged; these raw endpoints do not use the rollup.
 
 ## Validation scope before publication
 
-- The complete local unit, Worker/D1, and React suite passed: 806 tests in 70
+- Before the final expiry-during-form fix, the complete local unit, Worker/D1,
+  and React suite passed: 806 tests in 70
   files. TypeScript, Biome, the production build and asset budgets, targeted
   post-build asset tests, and migration rollback checks also passed.
-- GitHub Actions run
+- Before that final fix, GitHub Actions run
   [`33946940486`](https://github.com/amargiovanni/margiolink/actions/runs/33946940486)
   passed the same 806 tests in 70 files, TypeScript, Biome, production build
   budgets, migration rollback, and all 41 Chromium scenarios. These browser
   scenarios include the protected-link handoff, all three deferred-analytics
   cases, the expanded accessibility sweep, QR artefacts, and the adapted
   deferred-panel layout checks.
+- The final fix commit requires its own CI; final counts belong to that gate.
 - Deployment, public smoke checks, the tag, and the GitHub release are later
   publication gates and are not claimed here.
 

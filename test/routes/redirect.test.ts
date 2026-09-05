@@ -188,6 +188,7 @@ describe("password-protected links", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("location")).toBeNull();
+    expect(res.headers.get("content-type")).toContain("text/html");
     expect(res.headers.get("content-security-policy")).toContain("form-action 'self'");
     expect(res.headers.get("set-cookie")).toContain("ml_pw_secret=");
     expect(res.headers.get("set-cookie")).toContain("Max-Age=600");
@@ -237,15 +238,47 @@ describe("password-protected links", () => {
     expect(html.match(/https:\/\/example\.com\//g)).toHaveLength(2);
   });
 
+  it("returns a safe fallback handoff when the protected link expires before POST", async () => {
+    const link = await createProtected("hunter2");
+    const fallback = `https://example.com/expired?reason="old"&next=<done>`;
+    await updateLink(
+      env.DB,
+      link.id,
+      { expiresAt: NOW_SECONDS() - 10, expiredUrl: fallback },
+      NOW_SECONDS(),
+    );
+
+    const res = await SELF.fetch("https://link.test/secret", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=hunter2",
+      redirect: "manual",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    expect(res.headers.get("content-type")).toContain("text/html");
+    expect(res.headers.get("content-security-policy")).toContain("form-action 'self'");
+    expect(res.headers.get("set-cookie")).toBeNull();
+    const html = await res.text();
+    expect(html).toContain("This link has expired");
+    expect(html).toContain("Opening the fallback destination");
+    expect(html).toContain(
+      "https://example.com/expired?reason=&quot;old&quot;&amp;next=&lt;done&gt;",
+    );
+    expect(html.match(/https:\/\/example\.com\/expired/g)).toHaveLength(2);
+    expect(html).not.toContain("Password accepted");
+    expect(html).not.toContain("hunter2");
+
+    const rows = await clickRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.outcome).toBe("expired");
+    const attempts = await env.DB.prepare("SELECT * FROM login_attempts").all();
+    expect(attempts.results).toHaveLength(0);
+  });
+
   it.each([
     ["inactive", { isActive: false }, 410, null, "inactive"],
-    [
-      "expired with fallback",
-      { expiresAt: NOW_SECONDS() - 10, expiredUrl: "https://example.com/expired" },
-      302,
-      "https://example.com/expired",
-      "expired",
-    ],
     ["expired without fallback", { expiresAt: NOW_SECONDS() - 10 }, 410, null, "expired"],
   ] as const)(
     "applies the GET lifecycle policy to POST for an %s link",

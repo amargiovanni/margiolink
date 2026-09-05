@@ -27,7 +27,7 @@ const STATUS_OPTIONS = [
 
 /** The working list — spec §6.1. Search asks the API rather than filtering
  *  the current page in the browser: the list is paginated and the browser
- *  only ever holds one page of it, so a client-side filter would silently
+ *  only holds the pages it has loaded, so a client-side filter would silently
  *  search a subset and look like it worked. */
 export default function Links() {
   const [searchInput, setSearchInput] = useState("");
@@ -57,9 +57,11 @@ export default function Links() {
 
   // Debounced into the query key: the fetch only fires once typing settles
   // for 250ms, rather than once per keystroke. Search, status, and tag are
-  // each part of the infinite query key, so changing any filter starts that
-  // result set at its own first page. An overlong search remains in the
-  // input for correction without replacing the last valid result set.
+  // each part of the infinite query key, so every filter combination has an
+  // isolated result set. A first visit starts at its first page; revisiting a
+  // cached key can reuse the pages already loaded for it. An overlong search
+  // remains in the input for correction without replacing the last valid
+  // result set.
   useEffect(() => {
     if (searchTooLong) return;
     const id = window.setTimeout(() => {

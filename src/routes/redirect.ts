@@ -87,12 +87,18 @@ function noticePage(title: string, message: string): string {
   return page(title, `<h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p>`);
 }
 
-function handoffPage(target: string): string {
+interface HandoffCopy {
+  title: string;
+  heading: string;
+  opening: string;
+}
+
+function handoffPage(target: string, copy: HandoffCopy): string {
   const safeTarget = escapeHtml(target);
   return page(
-    "Opening link",
-    `<h1>Password accepted</h1>
-     <p>Opening your link. If nothing happens, <a href="${safeTarget}" rel="noreferrer">continue</a>.</p>`,
+    copy.title,
+    `<h1>${escapeHtml(copy.heading)}</h1>
+     <p>${escapeHtml(copy.opening)} If nothing happens, <a href="${safeTarget}" rel="noreferrer">continue</a>.</p>`,
     `<meta http-equiv="refresh" content="0;url=${safeTarget}">`,
   );
 }
@@ -116,9 +122,19 @@ function lifecycleResponse(
 
   if (isExpired(link, now)) {
     record("expired");
-    return link.expired_url
-      ? c.redirect(link.expired_url, 302)
-      : c.html(noticePage("Link expired", "This link is no longer available."), 410);
+    if (!link.expired_url) {
+      return c.html(noticePage("Link expired", "This link is no longer available."), 410);
+    }
+    if (c.req.method === "POST") {
+      return c.html(
+        handoffPage(link.expired_url, {
+          title: "Link expired",
+          heading: "This link has expired",
+          opening: "Opening the fallback destination.",
+        }),
+      );
+    }
+    return c.redirect(link.expired_url, 302);
   }
 
   return null;
@@ -259,6 +275,12 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
     c.executionCtx.waitUntil(
       recordClick(c.env, { linkId: link.id, slug, outcome: "redirect", context, now }),
     );
-    return c.html(handoffPage(link.target_url));
+    return c.html(
+      handoffPage(link.target_url, {
+        title: "Opening link",
+        heading: "Password accepted",
+        opening: "Opening your link.",
+      }),
+    );
   });
 }

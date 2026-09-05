@@ -269,8 +269,9 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
   await api(cookie, "DELETE", `/api/links/${archived.id}`);
 
   // Link 3: a real protected-link form flow. The browser spec intercepts the
-  // external destination so it can prove the POST's 302 is followed under the
-  // response CSP without making a network request to that destination.
+  // external destination so it can prove the POST's 200 HTML handoff starts a
+  // fresh navigation under the response CSP without making a network request
+  // to that destination.
   await ensureLink(cookie, {
     targetUrl: "https://example.com/e2e-protected-destination",
     slug: PROTECTED_SLUG,
