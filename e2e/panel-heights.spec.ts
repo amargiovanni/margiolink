@@ -57,11 +57,24 @@ async function openLinkDetail(page: import("@playwright/test").Page): Promise<vo
   await page.waitForURL(/\/app\/links\/\d+$/);
 }
 
+/** Capture the response before navigation so this also works if a larger
+ * viewport intersects the panel immediately. Scroll its stable wrapper rather
+ * than waiting for a list which does not mount until the panel is requested. */
+async function openLiveFeed(page: import("@playwright/test").Page): Promise<void> {
+  const loaded = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/stats/live" && response.ok(),
+  );
+  await openLinkDetail(page);
+  await page.locator('[data-deferred-panel="Live feed"]').scrollIntoViewIfNeeded();
+  await loaded;
+  await page.getByRole("list", { name: "Recent clicks" }).getByRole("listitem").first().waitFor();
+}
+
 test.describe("the link detail page", () => {
   test("bounds the live feed and lets a keyboard scroll it", async ({
     authenticatedPage: page,
   }) => {
-    await openLinkDetail(page);
+    await openLiveFeed(page);
 
     const feed = page.getByRole("list", { name: "Recent clicks" });
     await feed.waitFor();
@@ -92,7 +105,7 @@ test.describe("the link detail page", () => {
   test("leaves the QR panel its own height rather than the live feed's", async ({
     authenticatedPage: page,
   }) => {
-    await openLinkDetail(page);
+    await openLiveFeed(page);
 
     const qr = page.getByRole("region", { name: "QR code" });
     const live = page.getByRole("region", { name: "Live feed" });
@@ -111,11 +124,10 @@ test.describe("the link detail page", () => {
     expect(qrBox.height).toBeLessThan(liveBox.height);
   });
 
-  /** The scroll container is a new interactive surface, and `a11y.spec.ts`'s
-   *  page list does not include this page. Sweeping it here keeps the check
-   *  next to the change that needed it. */
+  /** Keep a dedicated sweep after the populated scroll container mounts,
+   * alongside the complete deferred-panel sweep in a11y.spec.ts. */
   test("has no serious accessibility violation", async ({ authenticatedPage: page }) => {
-    await openLinkDetail(page);
+    await openLiveFeed(page);
     await page.getByRole("region", { name: "QR code" }).waitFor();
 
     const results = await new AxeBuilder({ page }).analyze();
@@ -155,25 +167,44 @@ test.describe("the panel grids", () => {
   }) => {
     const gridOf = (locator: import("@playwright/test").Locator) =>
       locator.evaluate((element) => {
-        const grid = element.parentElement;
+        const item = element.closest("[data-deferred-panel]");
+        const grid = item?.parentElement;
         if (!grid) return null;
         const style = window.getComputedStyle(grid);
         return { display: style.display, alignItems: style.alignItems };
       });
 
+    const topLinksLoaded = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/stats/top-links" && response.ok(),
+    );
     await page.goto("/app");
+    await page.locator('[data-deferred-panel="Top links"]').scrollIntoViewIfNeeded();
+    await topLinksLoaded;
     const topLinks = page.getByRole("region", { name: "Top links" });
     await topLinks.waitFor();
+    await expect(topLinks.getByText("Loading…", { exact: true })).toHaveCount(0);
     const overviewGrid = await gridOf(topLinks);
 
-    // Anti-vacuity: if the panel's parent is not the grid any more, this test
+    // Anti-vacuity: if the panel wrapper's parent is not the grid, this test
     // is measuring the wrong element and should say so rather than pass.
     expect(overviewGrid?.display).toBe("grid");
     expect(overviewGrid?.alignItems).toBe("flex-start");
 
+    const countriesLoaded = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname === "/api/stats/dimension" &&
+        url.searchParams.get("name") === "country" &&
+        url.searchParams.has("linkId") &&
+        response.ok()
+      );
+    });
     await openLinkDetail(page);
+    await page.locator('[data-deferred-panel="Countries"]').scrollIntoViewIfNeeded();
+    await countriesLoaded;
     const countries = page.getByRole("region", { name: "Countries" });
     await countries.waitFor();
+    await expect(countries.getByText("Loading…", { exact: true })).toHaveCount(0);
     const dimensionGrid = await gridOf(countries);
 
     expect(dimensionGrid?.display).toBe("grid");
