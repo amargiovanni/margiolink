@@ -236,6 +236,14 @@ for (const width of [320, 390, 768, 900, 1440]) {
       type: "jpeg",
       quality: 85,
     });
+    if (width === 390 || width === 1440) {
+      await page.locator(".wordmark").scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: testInfo.outputPath(`landing-${width}-hero.jpg`),
+        type: "jpeg",
+        quality: 85,
+      });
+    }
   });
 }
 
