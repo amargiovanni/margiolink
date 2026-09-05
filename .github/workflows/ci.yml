@@ -88,7 +88,9 @@ jobs:
         if: success()
         with:
           name: landing-previews
+          # Playwright's output directory is hidden; the glob includes only preview JPEGs.
           path: e2e/.artifacts/**/landing-*.jpg
+          include-hidden-files: true
           retention-days: 7
           if-no-files-found: error
 

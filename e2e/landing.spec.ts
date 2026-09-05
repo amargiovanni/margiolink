@@ -69,7 +69,11 @@ test.describe("the landing page", () => {
     for (const image of await page.locator("img").all()) {
       await image.scrollIntoViewIfNeeded();
       await expect
-        .poll(() => image.evaluate((node) => node.complete && node.naturalWidth > 0))
+        .poll(() =>
+          image.evaluate(
+            (node) => node instanceof HTMLImageElement && node.complete && node.naturalWidth > 0,
+          ),
+        )
         .toBe(true);
     }
     const broken = await page.evaluate(() =>
@@ -195,7 +199,11 @@ for (const theme of ["light", "dark"] as const) {
     for (const image of await page.locator("img").all()) {
       await image.scrollIntoViewIfNeeded();
       await expect
-        .poll(() => image.evaluate((node) => node.complete && node.naturalWidth > 0))
+        .poll(() =>
+          image.evaluate(
+            (node) => node instanceof HTMLImageElement && node.complete && node.naturalWidth > 0,
+          ),
+        )
         .toBe(true);
     }
     await page.emulateMedia({ reducedMotion: "reduce" });
