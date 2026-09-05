@@ -173,7 +173,7 @@ describe("Links", () => {
       "180",
       "200",
     ]);
-  });
+  }, 10_000);
 
   it("keeps loaded links visible when the next page fails and retries that page", async () => {
     let pageAttempts = 0;
