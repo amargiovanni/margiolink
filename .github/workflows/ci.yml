@@ -83,6 +83,17 @@ jobs:
 
       - run: npm run e2e
 
+      - name: Save landing previews
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: landing-previews
+          # Playwright's output directory is hidden; the glob includes only preview JPEGs.
+          path: e2e/.artifacts/**/landing-*.jpg
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
+
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
