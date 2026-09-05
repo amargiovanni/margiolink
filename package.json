@@ -1,6 +1,6 @@
 {
   "name": "margiolink",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "URL shortener with privacy-preserving click analytics, on Cloudflare Workers and D1",
   "license": "MIT",
   "repository": {

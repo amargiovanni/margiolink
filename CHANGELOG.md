@@ -9,7 +9,7 @@ Because MargioLink is software other people deploy, entries say what an
 operator has to *do*, not only what changed. Anything requiring action on a
 running deployment appears under its own heading.
 
-## [Unreleased]
+## [1.0.0] - 2026-09-05
 
 ### Added
 
@@ -20,7 +20,8 @@ running deployment appears under its own heading.
 - **Click analytics** recorded on every redirect: country, region, city, time
   zone, network operator and serving datacenter; device, operating system,
   browser and language; referrer host classified as direct, search, social,
-  email or AI; the five UTM parameters; bot detection; and which of five
+  email or AI; the three bounded UTM fields (`source`, `medium`, and
+  `campaign`); bot detection; and which of five
   outcomes the request produced.
 - **Statistics API**: summary with a comparison against the preceding window of
   equal length, time series by hour, day or Monday-start week, breakdowns
@@ -32,8 +33,8 @@ running deployment appears under its own heading.
 - **Scheduled jobs**: an hourly idempotent rollup into daily aggregate tables,
   and a daily retention job that deletes raw click rows past their window in
   bounded batches, refusing to delete any day that was never aggregated.
-- **Public privacy notice** at `/privacy`, a `robots.txt` that disallows
-  everything, and an RFC 9116 `security.txt`.
+- **Public privacy notice** at `/privacy`, a `robots.txt` that allows the site
+  root while disallowing short links, and an RFC 9116 `security.txt`.
 - **Compliance evidence** in `compliance/`: an Article 6(1)(f) legitimate
   interest assessment with DPIA screening, and a data map classifying every
   `clicks` column, enforced against the live schema by a test.
@@ -68,6 +69,20 @@ running deployment appears under its own heading.
 
 ### Fixed
 
+- **Protected-link submissions now enforce the same lifecycle as visits.** A
+  password POST cannot open an inactive, expired, or deleted link. Successful
+  submissions return an HTTP 200 same-origin HTML handoff before starting a fresh
+  navigation, so Chromium's strict `form-action 'self'` policy cannot block
+  the external destination.
+- **Link lists remain within D1 limits.** Tag hydration runs in batches of at
+  most 100 link IDs, while the dashboard loads fixed 20-row pages and can
+  continue past 200 records without raising the API's per-request limit.
+- **Search is bounded by encoded size.** Link searches accept at most 48 UTF-8
+  bytes, leaving room for the two SQL wildcard bytes; longer values return a
+  400 response and the dashboard keeps the last valid results visible.
+- **Analytics detail loads when requested or brought into view.** Summary and
+  time series stay immediate, all fifteen dimensions remain available, and
+  the keyboard and no-`IntersectionObserver` paths are covered.
 - **The live click feed is bounded and scrolls.** It renders the last fifty
   clicks and had no scroll container, so on a link with real traffic the panel
   was several thousand pixels tall and pushed everything below it off the
@@ -87,6 +102,14 @@ running deployment appears under its own heading.
 
 ### Changed
 
+- **Eligible statistics reuse authenticated results for at most 60 seconds.**
+  Summary, time series, dimensions, and top links cache only successful,
+  closed, fully retained ranges after session validation. Open, future, or
+  truncated ranges, truncated comparison periods, failures, live clicks, and
+  sparklines bypass the Worker cache. Non-live dashboard queries use the same
+  60-second freshness window; live clicks retain 10-second polling.
+- **Private API routes authenticate once per request.** The login route stays
+  public and every other API handler remains behind the shared session guard.
 - **`robots.txt` allows the site root.** It disallowed everything, from when
   `/` answered nothing; the landing page is now the one path here worth
   indexing, and every short link stays disallowed.
@@ -96,6 +119,15 @@ running deployment appears under its own heading.
 
 ### Security
 
+- **Password grants are bound to the link and its current credentials.** New
+  versioned grants sign the immutable link ID, slug, password salt and password
+  hash without exposing credential material in the cookie. Changing the
+  password or link identity invalidates existing grants, and grants issued
+  before version 1.0.0 fail closed.
+- **Public request bodies are capped before parsing.** Login and protected-link
+  password submissions accept at most 16 KiB of actual streamed bytes,
+  including when `Content-Length` is absent or inaccurate, and return 413
+  before password derivation or throttle writes when the cap is exceeded.
 - **No IP address and no raw user-agent is ever stored.** Both are used only as
   input to an HMAC whose key contains the current UTC date, so a visitor's code
   changes at midnight and cannot be linked across days.
@@ -119,7 +151,8 @@ running deployment appears under its own heading.
   and the traffic channel are retained, which is what the analytics actually
   use.
 
----
+### Operator action
 
-*This project has not had a tagged release yet. The first one will move the
-entries above under a version heading.*
+- Visitors with an existing per-link password grant must enter the password
+  again after upgrading. No database migration or configuration change is
+  required for 1.0.0.
