@@ -397,3 +397,33 @@ describe("LinkDetail", () => {
     });
   });
 });
+
+describe("demand-loaded detail analytics", () => {
+  it("fetches only headline stats initially, then loads a panel on keyboard demand", async () => {
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    stub(DEFAULT_ROUTES);
+    renderDetail();
+    await screen.findByText("demo");
+    await waitFor(() => expect(screen.queryByText("Loading summary…")).not.toBeInTheDocument());
+    const statUrls = () =>
+      vi
+        .mocked(fetch)
+        .mock.calls.map(([url]) => String(url))
+        .filter((url) => url.includes("/api/stats/"));
+    expect(statUrls()).toHaveLength(2);
+    expect(statUrls().some((url) => url.includes("summary"))).toBe(true);
+    expect(statUrls().some((url) => url.includes("timeseries"))).toBe(true);
+    const button = screen.getByRole("button", { name: "Load Cities" });
+    button.focus();
+    await userEvent.keyboard("{Enter}");
+    await screen.findByRole("heading", { name: "Cities" });
+    await waitFor(() => expect(statUrls()).toHaveLength(3));
+    expect(statUrls()[2]).toContain("name=city");
+  });
+});

@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import qrcode from "qrcode-generator";
 import { z } from "zod";
-import { requireSession } from "../../auth/middleware";
 import {
   countRecentLinks,
   createLink,
@@ -52,7 +51,10 @@ const updateSchema = createSchema.partial().extend({
 });
 
 const listSchema = z.object({
-  search: z.string().optional(),
+  search: z
+    .string()
+    .refine((value) => new TextEncoder().encode(value).byteLength <= 48)
+    .optional(),
   status: z.enum(["all", "active", "inactive", "expired", "deleted"]).optional(),
   tagId: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
@@ -67,8 +69,6 @@ const CREATION_LIMIT_PER_HOUR = 120;
 const CREATION_WINDOW_SECONDS = 3600;
 
 export const links = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
-
-links.use("*", requireSession);
 
 links.get("/", async (c) => {
   const parsed = listSchema.safeParse(c.req.query());

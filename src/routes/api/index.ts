@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { AuthedVariables } from "../../auth/middleware";
+import { type AuthedVariables, requireSession } from "../../auth/middleware";
 import type { Env } from "../../types";
 import { privateAuth, publicAuth } from "./auth";
 import { links } from "./links";
@@ -13,6 +13,7 @@ export function createApiRouter(): Hono<{ Bindings: Env; Variables: AuthedVariab
   const api = new Hono<{ Bindings: Env; Variables: AuthedVariables }>();
 
   api.route("/", publicAuth);
+  api.use("*", requireSession);
   api.route("/", privateAuth);
   api.route("/links", links);
   api.route("/tags", tags);

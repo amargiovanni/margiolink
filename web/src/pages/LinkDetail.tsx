@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useParams } from "react-router";
 import { ChartFrame, chartStatus } from "../components/charts/ChartFrame";
+import { DeferredPanel } from "../components/charts/DeferredPanel";
 import { HEATMAP_CELLS, Heatmap } from "../components/charts/Heatmap";
 import { LiveFeed } from "../components/charts/LiveFeed";
 import { RankedBars } from "../components/charts/RankedBars";
@@ -14,12 +15,11 @@ import { QrPanel } from "../components/links/QrPanel";
 import { PeriodPicker } from "../components/PeriodPicker";
 import { Panel } from "../components/ui/Panel";
 import { ApiError } from "../lib/api";
-import { useDimension, useLink, useSummary, useTimeseries } from "../lib/queries";
+import { type Range, useDimension, useLink, useSummary, useTimeseries } from "../lib/queries";
 import { granularityFor, rangeFor } from "../lib/ranges";
 import { usePeriodSelection } from "../lib/usePeriodSelection";
 
 type Slice = { value: string; clicks: number; uniques: number };
-type DimensionQuery = ReturnType<typeof useDimension>;
 
 /** Converts an ISO-3166-1 alpha-2 code into its regional-indicator flag
  *  glyph (e.g. "IT" -> "🇮🇹"). Anything that is not exactly two letters —
@@ -45,19 +45,22 @@ function toTable(columnLabel: string, slices: Slice[]) {
  * campaign panel on every link for a reader who has never used UTM tags is
  * noise, and showing it during loading or on an error would say "there is
  * data here" before that is actually known to be true. */
-function DimensionPanel({
+function LoadedDimensionPanel({
   title,
   description,
-  query,
+  range,
+  name,
   withFlags,
   optional,
 }: {
   title: string;
   description?: string;
-  query: DimensionQuery;
+  range: Range;
+  name: string;
   withFlags?: boolean;
   optional?: boolean;
 }) {
+  const query = useDimension(range, name);
   if (optional && !(query.isSuccess && query.data.slices.length > 0)) return null;
 
   const rawSlices = query.data?.slices ?? [];
@@ -90,6 +93,38 @@ function DimensionPanel({
   );
 }
 
+function DimensionPanel(props: Parameters<typeof LoadedDimensionPanel>[0]) {
+  return (
+    <DeferredPanel title={props.title} headingLevel={3}>
+      <LoadedDimensionPanel {...props} />
+    </DeferredPanel>
+  );
+}
+
+function HourlyPanel({ range }: { range: Range }) {
+  const hourlyQuery = useDimension(range, "dow_hour", HEATMAP_CELLS);
+  return (
+    <ChartFrame
+      title="Activity by hour"
+      headingLevel={3}
+      description="Clicks by day of week and hour."
+      table={toTable("Hour", hourlyQuery.data?.slices ?? [])}
+      status={chartStatus(hourlyQuery)}
+      errorMessage="Could not load the heatmap."
+    >
+      {hourlyQuery.isError ? (
+        <p role="alert" className="py-6 text-center text-sm text-critical">
+          Could not load the heatmap.
+        </p>
+      ) : hourlyQuery.isPending ? (
+        <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
+      ) : (
+        <Heatmap slices={hourlyQuery.data.slices} />
+      )}
+    </ChartFrame>
+  );
+}
+
 /** The link detail page — spec §6.1's "ricchissima" screen: every dimension
  *  the API exposes as a ranked list, plus the hour-by-weekday heatmap, the
  *  live feed, the QR code and the outcome breakdown.
@@ -111,26 +146,6 @@ export default function LinkDetail() {
 
   const summaryQuery = useSummary(range);
   const timeseriesQuery = useTimeseries(range, granularity);
-
-  // dow_hour has at most 168 possible cells (7 days × 24 hours) — the
-  // heatmap requests all of them, and the dimension endpoint's cap is now
-  // raised to allow it (see `src/routes/api/stats.ts`).
-  const hourlyQuery = useDimension(range, "dow_hour", HEATMAP_CELLS);
-
-  const countryQuery = useDimension(range, "country");
-  const cityQuery = useDimension(range, "city");
-  const deviceQuery = useDimension(range, "device");
-  const osQuery = useDimension(range, "os");
-  const browserQuery = useDimension(range, "browser");
-  const languageQuery = useDimension(range, "language");
-  const networkQuery = useDimension(range, "asn_org");
-  const channelQuery = useDimension(range, "referrer_type");
-  const referrerQuery = useDimension(range, "referrer_host");
-  const campaignQuery = useDimension(range, "utm_campaign");
-  const sourceUtmQuery = useDimension(range, "utm_source");
-  const mediumQuery = useDimension(range, "utm_medium");
-  const scanQuery = useDimension(range, "source");
-  const outcomeQuery = useDimension(range, "outcome");
 
   // A non-finite id (an unparseable route param, e.g. `/links/abc`) leaves
   // `useLink` permanently disabled — it never settles into `isError` or
@@ -275,24 +290,9 @@ export default function LinkDetail() {
           )}
         </ChartFrame>
 
-        <ChartFrame
-          title="Activity by hour"
-          headingLevel={3}
-          description="Clicks by day of week and hour."
-          table={toTable("Hour", hourlyQuery.data?.slices ?? [])}
-          status={chartStatus(hourlyQuery)}
-          errorMessage="Could not load the heatmap."
-        >
-          {hourlyQuery.isError ? (
-            <p role="alert" className="py-6 text-center text-sm text-critical">
-              Could not load the heatmap.
-            </p>
-          ) : hourlyQuery.isPending ? (
-            <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
-          ) : (
-            <Heatmap slices={hourlyQuery.data.slices} />
-          )}
-        </ChartFrame>
+        <DeferredPanel title="Activity by hour" headingLevel={3}>
+          <HourlyPanel range={range} />
+        </DeferredPanel>
       </section>
 
       <section aria-labelledby="audience-heading" className="flex flex-col gap-5">
@@ -303,12 +303,12 @@ export default function LinkDetail() {
           description="Geography, devices and software behind the traffic."
         />
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-          <DimensionPanel title="Countries" query={countryQuery} withFlags />
-          <DimensionPanel title="Cities" query={cityQuery} />
-          <DimensionPanel title="Devices" query={deviceQuery} />
-          <DimensionPanel title="Operating systems" query={osQuery} />
-          <DimensionPanel title="Browsers" query={browserQuery} />
-          <DimensionPanel title="Languages" query={languageQuery} />
+          <DimensionPanel title="Countries" range={range} name="country" withFlags />
+          <DimensionPanel title="Cities" range={range} name="city" />
+          <DimensionPanel title="Devices" range={range} name="device" />
+          <DimensionPanel title="Operating systems" range={range} name="os" />
+          <DimensionPanel title="Browsers" range={range} name="browser" />
+          <DimensionPanel title="Languages" range={range} name="language" />
         </div>
       </section>
 
@@ -320,11 +320,11 @@ export default function LinkDetail() {
           description="Channels, referrers and campaign attribution in one focused view."
         />
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-          <DimensionPanel title="Channels" query={channelQuery} />
-          <DimensionPanel title="Referrers" query={referrerQuery} />
-          <DimensionPanel title="Campaigns" query={campaignQuery} optional />
-          <DimensionPanel title="Sources" query={sourceUtmQuery} optional />
-          <DimensionPanel title="Mediums" query={mediumQuery} optional />
+          <DimensionPanel title="Channels" range={range} name="referrer_type" />
+          <DimensionPanel title="Referrers" range={range} name="referrer_host" />
+          <DimensionPanel title="Campaigns" range={range} name="utm_campaign" optional />
+          <DimensionPanel title="Sources" range={range} name="utm_source" optional />
+          <DimensionPanel title="Mediums" range={range} name="utm_medium" optional />
         </div>
       </section>
 
@@ -336,25 +336,28 @@ export default function LinkDetail() {
           description="Networks, scan sources, outcomes and the tools attached to this short link."
         />
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
-          <DimensionPanel title="Networks" query={networkQuery} />
-          <DimensionPanel title="Scans vs clicks" query={scanQuery} />
+          <DimensionPanel title="Networks" range={range} name="asn_org" />
+          <DimensionPanel title="Scans vs clicks" range={range} name="source" />
           <DimensionPanel
             title="Outcomes"
             description="How many hit an expired link or failed a password."
-            query={outcomeQuery}
+            range={range}
+            name="outcome"
           />
         </div>
 
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-          <Panel as="section" aria-labelledby="live-feed-heading" className="p-5 sm:p-6">
-            <h3
-              id="live-feed-heading"
-              className="mb-4 font-display text-xl font-semibold leading-tight tracking-tight"
-            >
-              Live feed
-            </h3>
-            <LiveFeed linkId={linkId} />
-          </Panel>
+          <DeferredPanel title="Live feed" headingLevel={3}>
+            <Panel as="section" aria-labelledby="live-feed-heading" className="p-5 sm:p-6">
+              <h3
+                id="live-feed-heading"
+                className="mb-4 font-display text-xl font-semibold leading-tight tracking-tight"
+              >
+                Live feed
+              </h3>
+              <LiveFeed linkId={linkId} />
+            </Panel>
+          </DeferredPanel>
 
           <Panel as="section" aria-labelledby="qr-heading" className="p-5 sm:p-6">
             <h3

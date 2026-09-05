@@ -16,6 +16,27 @@ async function login(body: unknown, headers: Record<string, string> = {}) {
   });
 }
 
+function streamedLogin(body: string, declaredLength?: number): Promise<Response> {
+  const bytes = new TextEncoder().encode(body);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes.slice(0, 8 * 1024));
+      controller.enqueue(bytes.slice(8 * 1024));
+      controller.close();
+    },
+  });
+  return SELF.fetch(
+    new Request("https://link.test/api/auth/login", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(declaredLength === undefined ? {} : { "content-length": String(declaredLength) }),
+      },
+      body: stream,
+    }),
+  );
+}
+
 function sessionCookie(res: Response): string {
   return (res.headers.get("set-cookie") ?? "").split(";")[0] as string;
 }
@@ -56,6 +77,45 @@ describe("POST /api/auth/login", () => {
 
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_body" });
+  });
+
+  it("rejects a large ignored JSON field before any authentication write", async () => {
+    const body = JSON.stringify({ ...CREDENTIALS, ignored: "x".repeat(1024 * 1024) });
+    const res = await login(JSON.parse(body));
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "payload_too_large" });
+    const sessions = await env.DB.prepare("SELECT * FROM admin_sessions").all();
+    const attempts = await env.DB.prepare("SELECT * FROM login_attempts").all();
+    expect(sessions.results).toHaveLength(0);
+    expect(attempts.results).toHaveLength(0);
+  });
+
+  it("accepts exactly 16 KiB of streamed JSON despite a low declared length", async () => {
+    const body = JSON.stringify(CREDENTIALS).padEnd(16 * 1024, " ");
+    const res = await streamedLogin(body, 1);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("counts streamed bytes and rejects 16 KiB plus one despite a low declared length", async () => {
+    const body = JSON.stringify(CREDENTIALS).padEnd(16 * 1024 + 1, " ");
+    const res = await streamedLogin(body, 1);
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "payload_too_large" });
+    const sessions = await env.DB.prepare("SELECT * FROM admin_sessions").all();
+    const attempts = await env.DB.prepare("SELECT * FROM login_attempts").all();
+    expect(sessions.results).toHaveLength(0);
+    expect(attempts.results).toHaveLength(0);
+  });
+
+  it("rejects a streamed body above 16 KiB when Content-Length is absent", async () => {
+    const body = JSON.stringify(CREDENTIALS).padEnd(16 * 1024 + 1, " ");
+    const res = await streamedLogin(body);
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "payload_too_large" });
   });
 
   it("locks out after eight failures and answers 429 with Retry-After", async () => {

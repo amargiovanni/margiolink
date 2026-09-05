@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 
 export interface Tag {
@@ -77,6 +77,7 @@ export interface Meta {
 
 export const keys = {
   links: (params?: unknown) => ["links", params ?? {}] as const,
+  infiniteLinks: (params?: unknown) => ["links", "infinite", params ?? {}] as const,
   link: (id: number) => ["link", id] as const,
   tags: () => ["tags"] as const,
   sessions: () => ["sessions"] as const,
@@ -94,6 +95,27 @@ export function useLinks(params: {
   return useQuery({
     queryKey: keys.links(params),
     queryFn: () => api.get<{ links: Link[]; total: number }>("/api/links", params),
+  });
+}
+
+const LINKS_PAGE_SIZE = 20;
+
+export function useInfiniteLinks(params: { search?: string; status?: string; tagId?: number }) {
+  return useInfiniteQuery({
+    queryKey: keys.infiniteLinks(params),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      api.get<{ links: Link[]; total: number }>("/api/links", {
+        ...params,
+        limit: LINKS_PAGE_SIZE,
+        offset: pageParam,
+      }),
+    getNextPageParam: (lastPage, _pages, lastPageParam) => {
+      if (lastPage.links.length === 0 || lastPageParam + LINKS_PAGE_SIZE >= lastPage.total) {
+        return undefined;
+      }
+      return lastPageParam + LINKS_PAGE_SIZE;
+    },
   });
 }
 
@@ -120,6 +142,7 @@ export function useMeta() {
 
 export function useSummary(range: Range) {
   return useQuery({
+    staleTime: 60_000,
     queryKey: keys.stats("summary", range),
     queryFn: () => api.get<SummaryResponse>("/api/stats/summary", { ...range }),
   });
@@ -127,6 +150,7 @@ export function useSummary(range: Range) {
 
 export function useTimeseries(range: Range, granularity: "hour" | "day" | "week") {
   return useQuery({
+    staleTime: 60_000,
     queryKey: keys.stats("timeseries", { ...range, granularity }),
     queryFn: () => api.get<TimeseriesResponse>("/api/stats/timeseries", { ...range, granularity }),
   });
@@ -134,6 +158,7 @@ export function useTimeseries(range: Range, granularity: "hour" | "day" | "week"
 
 export function useDimension(range: Range, name: string, limit = 20) {
   return useQuery({
+    staleTime: 60_000,
     queryKey: keys.stats("dimension", { ...range, name, limit }),
     queryFn: () => api.get<DimensionResponse>("/api/stats/dimension", { ...range, name, limit }),
   });
@@ -158,6 +183,7 @@ export interface TopLinksResponse {
  *  along with `range`, matching `useDimension`'s pattern. */
 export function useTopLinks(range: Range, limit = 5) {
   return useQuery({
+    staleTime: 60_000,
     queryKey: keys.stats("top-links", { ...range, limit }),
     queryFn: () => api.get<TopLinksResponse>("/api/stats/top-links", { ...range, limit }),
   });
@@ -197,6 +223,7 @@ export interface LiveClick {
 
 export function useSparklines(days = 7) {
   return useQuery({
+    staleTime: 60_000,
     queryKey: keys.stats("sparklines", days),
     queryFn: () =>
       api.get<{ days: number; series: Record<string, number[]> }>("/api/stats/sparklines", {

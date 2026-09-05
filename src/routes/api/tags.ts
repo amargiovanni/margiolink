@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireSession } from "../../auth/middleware";
 import { createTag, deleteTag, listTags, TagNameTakenError } from "../../db/tags";
 import type { Env } from "../../types";
 
@@ -10,8 +9,6 @@ const tagSchema = z.object({
 });
 
 export const tags = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
-
-tags.use("*", requireSession);
 
 tags.get("/", async (c) => c.json({ tags: await listTags(c.env.DB) }));
 

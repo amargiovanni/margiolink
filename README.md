@@ -11,9 +11,9 @@ about each click to answer real questions — which country, which device, which
 channel, what time of day — without ever writing down who the visitor was.
 
 > **Status:** the backend, the dashboard and the public landing page are all
-> complete, covered by 701 tests — 375 inside `workerd` against real D1, 326 in
-> a browser (jsdom) environment — plus 36 end-to-end tests in a real Chromium,
-> in CI on every pull request. Sign in at `/app`. See [Roadmap](#roadmap).
+> complete, covered by 806 automated unit, Worker/D1 and jsdom tests across 70
+> files, plus 41 end-to-end browser scenarios in real Chromium in CI. Sign in
+> at `/app`. See [Roadmap](#roadmap).
 
 [![The MargioLink overview: ninety days of clicks and unique visitors, top links, a world map, device and channel breakdowns, and an hour-by-weekday heatmap](docs/screenshots/overview-dark.jpg)](docs/screenshots/)
 
@@ -150,6 +150,9 @@ the account, not to measure anyone.
 Two cookies exist in the entire system: the admin session, and a ten-minute
 token proving a visitor entered the right password for a protected link.
 Neither is used for measurement, and both are disclosed at `/privacy`.
+The password grant is bound to the link's immutable ID, current slug and
+current password credentials. Changing that identity or password invalidates
+the grant, and grants from releases before 1.0.0 are rejected.
 
 ## Architecture
 
@@ -472,7 +475,7 @@ npm run e2e:ui                    # Playwright's UI mode, for writing/debugging
 ```
 
 `npm run e2e` builds the dashboard and starts `wrangler dev` itself
-(`e2e/playwright.config.ts`'s `webServer`), then seeds two links, a tag and
+(`e2e/playwright.config.ts`'s `webServer`), then seeds three links, a tag and
 ~50 real clicks through the actual API (`e2e/seed.ts`) before any test runs.
 It needs the same `npm run db:migrate:local` this section's "Running it
 locally" step above already asked for — a fresh clone's local D1 has no
@@ -586,7 +589,7 @@ All bodies and responses are JSON.
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| `POST` | `/api/auth/login` | `{username, password}`. Sets a `__Host-` session cookie. Throttled per IP hash |
+| `POST` | `/api/auth/login` | `{username, password}`. Sets a `__Host-` session cookie. Throttled per IP hash; request body capped at 16 KiB of actual bytes |
 | `POST` | `/api/auth/logout` | Invalidates the current session |
 | `GET` | `/api/auth/sessions` | Active sessions, with a coarse device label |
 | `DELETE` | `/api/auth/sessions` | Revoke every session |
@@ -596,7 +599,7 @@ All bodies and responses are JSON.
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| `GET` | `/api/links` | `?search=&status=&tagId=&limit=&offset=`. Status is `all\|active\|inactive\|expired\|deleted` |
+| `GET` | `/api/links` | `?search=&status=&tagId=&limit=&offset=`. Search is at most 48 UTF-8 bytes; limit is 1–200. The dashboard requests fixed 20-row pages. Status is `all\|active\|inactive\|expired\|deleted` |
 | `POST` | `/api/links` | `{targetUrl, slug?, title?, description?, password?, expiresAt?, expiredUrl?}` |
 | `GET` | `/api/links/:id` | One link with its tags |
 | `PATCH` | `/api/links/:id` | Same fields, plus `isActive`. `password: null` clears it |
@@ -609,7 +612,7 @@ A link never returns its password. `hasPassword` is a boolean.
 
 Status codes worth knowing: `409` for a slug already taken, `422` for a slug
 that is malformed or reserved and for a rejected destination, `429` when the
-creation limit is hit.
+creation limit is hit, and `400` for an overlong search.
 
 ### Tags
 
@@ -663,13 +666,23 @@ window does not fit. Serving older ranges from `click_daily` and
 `click_daily_dim` remains a separate feature because aggregate unique counts
 have different semantics.
 
+After the session is validated, successful summary, time-series, dimension,
+and top-links responses for closed, fully retained ranges can be reused from
+the Workers Cache API for at most 60 seconds. Summary also requires its full
+comparison range to be retained. Open or future ranges, truncated primary or
+comparison ranges, errors, live clicks, and sparklines are not stored there.
+The response to the browser remains private and non-cacheable. The dashboard
+also treats non-live statistics as fresh for 60 seconds and loads detailed
+panels on viewport entry or explicit request; live clicks still poll every 10
+seconds when mounted.
+
 ### Public
 
 | Method | Path | Notes |
 | --- | --- | --- |
 | `GET` | `/` | The landing page. A static asset, served without invoking the Worker |
 | `GET` | `/:slug` | The redirect. `?s=qr` marks a scan |
-| `POST` | `/:slug` | Password submission for a protected link |
+| `POST` | `/:slug` | Password submission for a protected link. Body capped at 16 KiB of actual bytes; success returns a 200 HTML handoff that starts a fresh navigation |
 | `GET` | `/privacy` | The privacy notice |
 | `GET` | `/robots.txt` | Allows the landing page, disallows every short link |
 | `GET` | `/.well-known/security.txt` | RFC 9116 |
@@ -716,10 +729,10 @@ source rows and reports the gap rather than silently eating history.
 ## Development
 
 ```bash
-npm test                    # 735 tests: 408 inside workerd against real D1, 327 in jsdom
+npm test                    # 806 tests across 70 files: Worker/D1, React/jsdom and unit coverage
 npm run test:build-budget   # exercises the artifact-budget checker itself
 npm run test:watch
-npm run e2e                 # 36 tests in a real Chromium — see "End-to-end tests" above
+npm run e2e                 # 41 scenarios in a real Chromium — see "End-to-end tests" above
 npm run check               # Biome: lint and format
 npm run check:fix
 npm run typecheck           # tsc --noEmit (backend, dashboard and e2e/, each their own project)

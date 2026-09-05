@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { requireSession } from "../../auth/middleware";
 import type { Env } from "../../types";
 
 /**
@@ -21,8 +20,6 @@ import type { Env } from "../../types";
  * for a Worker that may already be a step ahead or behind that build.
  */
 export const meta = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
-
-meta.use("*", requireSession);
 
 meta.get("/", (c) =>
   c.json({

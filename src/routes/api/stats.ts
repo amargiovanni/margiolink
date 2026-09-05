@@ -16,7 +16,6 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireSession } from "../../auth/middleware";
 import { recentClicks } from "../../db/clicks";
 import {
   DIMENSION_COLUMNS,
@@ -29,6 +28,7 @@ import {
   timeseries,
   topLinks,
 } from "../../db/stats";
+import { cachedStats } from "../../lib/stats-cache";
 import type { Env } from "../../types";
 
 const rangeSchema = z
@@ -101,9 +101,8 @@ function rangeForEnv(env: Env, range: StatsRange): { range: StatsRange; meta: St
 
 export const stats = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
 
-stats.use("*", requireSession);
-
 stats.get("/summary", async (c) => {
+  c.header("Cache-Control", "private, no-store");
   const parsed = rangeSchema.safeParse(c.req.query());
   if (!parsed.success) return c.json({ error: "invalid_range" }, 400);
 
@@ -116,15 +115,18 @@ stats.get("/summary", async (c) => {
     ...(linkId === undefined ? {} : { linkId }),
   };
 
-  const [current, previous] = await Promise.all([
-    summary(c.env.DB, normalized.range),
-    summary(c.env.DB, previousRange),
-  ]);
+  return cachedStats(c, normalized.meta, to, from - span, async () => {
+    const [current, previous] = await Promise.all([
+      summary(c.env.DB, normalized.range),
+      summary(c.env.DB, previousRange),
+    ]);
 
-  return c.json({ current, previous, range: { from, to }, meta: normalized.meta });
+    return { current, previous, range: { from, to } };
+  });
 });
 
 stats.get("/timeseries", async (c) => {
+  c.header("Cache-Control", "private, no-store");
   const parsed = rangeSchema.safeParse(c.req.query());
   if (!parsed.success) return c.json({ error: "invalid_range" }, 400);
 
@@ -134,11 +136,14 @@ stats.get("/timeseries", async (c) => {
   }
 
   const normalized = rangeForEnv(c.env, parsed.data);
-  const buckets = await timeseries(c.env.DB, normalized.range, granularity as Granularity);
-  return c.json({ buckets, granularity, meta: normalized.meta });
+  return cachedStats(c, normalized.meta, parsed.data.to, parsed.data.from, async () => {
+    const buckets = await timeseries(c.env.DB, normalized.range, granularity as Granularity);
+    return { buckets, granularity };
+  });
 });
 
 stats.get("/dimension", async (c) => {
+  c.header("Cache-Control", "private, no-store");
   const parsed = rangeSchema.safeParse(c.req.query());
   if (!parsed.success) return c.json({ error: "invalid_range" }, 400);
 
@@ -154,11 +159,14 @@ stats.get("/dimension", async (c) => {
   if (!limit.success) return c.json({ error: "invalid_limit" }, 400);
 
   const normalized = rangeForEnv(c.env, parsed.data);
-  const slices = await dimension(c.env.DB, normalized.range, name.data, limit.data);
-  return c.json({ slices, dimension: name.data, meta: normalized.meta });
+  return cachedStats(c, normalized.meta, parsed.data.to, parsed.data.from, async () => {
+    const slices = await dimension(c.env.DB, normalized.range, name.data, limit.data);
+    return { slices, dimension: name.data };
+  });
 });
 
 stats.get("/top-links", async (c) => {
+  c.header("Cache-Control", "private, no-store");
   const parsed = topLinksRangeSchema.safeParse(c.req.query());
   if (!parsed.success) return c.json({ error: "invalid_range" }, 400);
 
@@ -171,11 +179,14 @@ stats.get("/top-links", async (c) => {
   if (!limit.success) return c.json({ error: "invalid_limit" }, 400);
 
   const normalized = rangeForEnv(c.env, parsed.data);
-  const links = await topLinks(c.env.DB, normalized.range, limit.data);
-  return c.json({ links, meta: normalized.meta });
+  return cachedStats(c, normalized.meta, parsed.data.to, parsed.data.from, async () => {
+    const links = await topLinks(c.env.DB, normalized.range, limit.data);
+    return { links };
+  });
 });
 
 stats.get("/live", async (c) => {
+  c.header("Cache-Control", "private, no-store");
   const limit = z.coerce
     .number()
     .int()
@@ -207,6 +218,7 @@ stats.get("/live", async (c) => {
 });
 
 stats.get("/sparklines", async (c) => {
+  c.header("Cache-Control", "private, no-store");
   const days = z.coerce
     .number()
     .int()
