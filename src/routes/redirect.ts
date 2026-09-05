@@ -1,9 +1,10 @@
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { issueLinkToken, verifyLinkToken } from "../auth/link-token";
 import { clearLoginFailures, reserveLoginAttempt } from "../auth/rate-limit";
 import { findBySlug, type LinkRow } from "../db/links";
 import { recordClick } from "../ingest/record-click";
+import { readLimitedBody } from "../lib/body-limit";
 import { ipHash, verifyPassword } from "../lib/crypto";
 import { buildRequestContext } from "../lib/request-context";
 import { requireHashSecret } from "../lib/secrets";
@@ -89,6 +90,39 @@ function isExpired(link: LinkRow, now: number): boolean {
   return link.expires_at !== null && link.expires_at <= now;
 }
 
+type RecordOutcome = (outcome: Parameters<typeof recordClick>[1]["outcome"]) => void;
+
+function lifecycleResponse(
+  c: Context<{ Bindings: Env }>,
+  link: LinkRow,
+  now: number,
+  record: RecordOutcome,
+): Response | null {
+  if (link.is_active === 0) {
+    record("inactive");
+    return c.html(noticePage("Link disabled", "This link is no longer active."), 410);
+  }
+
+  if (isExpired(link, now)) {
+    record("expired");
+    return link.expired_url
+      ? c.redirect(link.expired_url, 302)
+      : c.html(noticePage("Link expired", "This link is no longer available."), 410);
+  }
+
+  return null;
+}
+
+function tokenIdentity(link: LinkRow) {
+  if (!link.password_hash || !link.password_salt) return null;
+  return {
+    id: link.id,
+    slug: link.slug,
+    passwordSalt: link.password_salt,
+    passwordHash: link.password_hash,
+  };
+}
+
 function cookieName(slug: string): string {
   return `ml_pw_${slug}`;
 }
@@ -126,21 +160,14 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
         recordClick(c.env, { linkId: link.id, slug, outcome, context, now }),
       );
 
-    if (link.is_active === 0) {
-      record("inactive");
-      return c.html(noticePage("Link disabled", "This link is no longer active."), 410);
-    }
-
-    if (isExpired(link, now)) {
-      record("expired");
-      return link.expired_url
-        ? c.redirect(link.expired_url, 302)
-        : c.html(noticePage("Link expired", "This link is no longer available."), 410);
-    }
+    const unavailable = lifecycleResponse(c, link, now, record);
+    if (unavailable) return unavailable;
 
     if (link.password_hash) {
+      const identity = tokenIdentity(link);
+      if (!identity) return c.text("Not found", 404);
       const token = getCookie(c, cookieName(slug));
-      const allowed = token ? await verifyLinkToken(secret, slug, token, now) : false;
+      const allowed = token ? await verifyLinkToken(secret, identity, token, now) : false;
       if (!allowed) {
         record("password_required");
         return c.html(passwordPage(link.slug, null), 401);
@@ -159,19 +186,29 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
     const slug = normaliseSlug(c.req.param("slug"));
     const link = await findBySlug(c.env.DB, slug);
 
-    if (!link || link.deleted_at !== null || !link.password_hash || !link.password_salt) {
+    if (!link || link.deleted_at !== null) {
       return c.text("Not found", 404);
     }
 
     const now = Math.floor(Date.now() / 1000);
     const context = buildRequestContext(c.req.raw);
-    const recordFailure = () =>
+    const record = (outcome: Parameters<typeof recordClick>[1]["outcome"]) =>
       c.executionCtx.waitUntil(
-        recordClick(c.env, { linkId: link.id, slug, outcome: "password_failed", context, now }),
+        recordClick(c.env, { linkId: link.id, slug, outcome, context, now }),
       );
+    const unavailable = lifecycleResponse(c, link, now, record);
+    if (unavailable) return unavailable;
 
-    const body = await c.req.parseBody();
-    const submitted = typeof body.password === "string" ? body.password : "";
+    const identity = tokenIdentity(link);
+    if (!identity) return c.text("Not found", 404);
+
+    const recordFailure = () => record("password_failed");
+
+    const body = await readLimitedBody(c.req.raw);
+    if (!body.ok) {
+      return c.html(noticePage("Request too large", "The submitted form is too large."), 413);
+    }
+    const submitted = new URLSearchParams(body.text).get("password") ?? "";
     if (submitted.length > 200) {
       recordFailure();
       return c.html(passwordPage(link.slug, "wrong"), 400);
@@ -191,7 +228,7 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
       });
     }
 
-    const correct = await verifyPassword(submitted, link.password_salt, link.password_hash);
+    const correct = await verifyPassword(submitted, identity.passwordSalt, identity.passwordHash);
 
     if (!correct) {
       recordFailure();
@@ -200,7 +237,7 @@ export function registerRedirect(app: Hono<{ Bindings: Env }>): void {
 
     await clearLoginFailures(c.env.DB, throttleKey);
 
-    setCookie(c, cookieName(slug), await issueLinkToken(secret, slug, now), {
+    setCookie(c, cookieName(slug), await issueLinkToken(secret, identity, now), {
       path: `/${slug}`,
       httpOnly: true,
       secure: true,

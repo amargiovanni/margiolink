@@ -16,7 +16,6 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireSession } from "../../auth/middleware";
 import { recentClicks } from "../../db/clicks";
 import {
   DIMENSION_COLUMNS,
@@ -100,8 +99,6 @@ function rangeForEnv(env: Env, range: StatsRange): { range: StatsRange; meta: St
 }
 
 export const stats = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
-
-stats.use("*", requireSession);
 
 stats.get("/summary", async (c) => {
   const parsed = rangeSchema.safeParse(c.req.query());

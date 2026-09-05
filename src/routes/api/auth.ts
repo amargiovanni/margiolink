@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
-import { requireSession } from "../../auth/middleware";
 import { clearLoginFailures, reserveLoginAttempt } from "../../auth/rate-limit";
 import { SESSION_COOKIE, SESSION_MAX_AGE, summariseUserAgent } from "../../auth/session";
 import {
@@ -11,6 +10,7 @@ import {
   destroySessionById,
   listSessions,
 } from "../../db/sessions";
+import { readLimitedBody } from "../../lib/body-limit";
 import { constantTimeEquals, ipHash } from "../../lib/crypto";
 import { requireHashSecret } from "../../lib/secrets";
 import { parseClient } from "../../lib/ua";
@@ -29,7 +29,16 @@ publicAuth.post("/auth/login", async (c) => {
   // on a key an attacker can compute.
   const secret = requireHashSecret(c.env);
 
-  const parsed = loginSchema.safeParse(await c.req.json().catch(() => null));
+  const body = await readLimitedBody(c.req.raw);
+  if (!body.ok) return c.json({ error: "payload_too_large" }, 413);
+
+  let json: unknown = null;
+  try {
+    json = JSON.parse(body.text);
+  } catch {
+    // The schema below owns the public invalid-body response.
+  }
+  const parsed = loginSchema.safeParse(json);
   if (!parsed.success) {
     return c.json({ error: "invalid_body" }, 400);
   }
@@ -70,8 +79,6 @@ publicAuth.post("/auth/login", async (c) => {
 });
 
 export const privateAuth = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
-
-privateAuth.use("*", requireSession);
 
 privateAuth.post("/auth/logout", async (c) => {
   const token = getCookie(c, SESSION_COOKIE);

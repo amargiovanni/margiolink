@@ -1,5 +1,5 @@
 import { env, SELF } from "cloudflare:test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createLink, updateLink } from "../../src/db/links";
 import { hashPassword, randomSalt } from "../../src/lib/crypto";
 
@@ -16,6 +16,31 @@ async function clickRows() {
     Record<string, unknown>
   >();
   return results;
+}
+
+function formBody(password: string, bytes?: number): string {
+  const prefix = `password=${password}&ignored=`;
+  return bytes === undefined ? prefix : prefix.padEnd(bytes, "x");
+}
+
+function streamedRequest(url: string, body: string, declaredLength: number): Request {
+  const bytes = new TextEncoder().encode(body);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const split = Math.floor(bytes.length / 2);
+      controller.enqueue(bytes.slice(0, split));
+      controller.enqueue(bytes.slice(split));
+      controller.close();
+    },
+  });
+  return new Request(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      "content-length": String(declaredLength),
+    },
+    body: stream,
+  });
 }
 
 describe("GET /:slug", () => {
@@ -164,7 +189,63 @@ describe("password-protected links", () => {
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe("https://example.com/private");
     expect(res.headers.get("set-cookie")).toContain("ml_pw_secret=");
+    expect(res.headers.get("set-cookie")).toContain("Max-Age=600");
+    const token = (res.headers.get("set-cookie") ?? "").match(/ml_pw_secret=([^;]+)/)?.[1];
+    const [version, expiry] = token?.split(".") ?? [];
+    expect(version).toBe("v2");
+    expect(Number(expiry)).toBeGreaterThanOrEqual(NOW_SECONDS() + 599);
+    expect(Number(expiry)).toBeLessThanOrEqual(NOW_SECONDS() + 600);
     expect((await clickRows()).at(-1)?.outcome).toBe("redirect");
+  });
+
+  it.each([
+    ["inactive", { isActive: false }, 410, null, "inactive"],
+    [
+      "expired with fallback",
+      { expiresAt: NOW_SECONDS() - 10, expiredUrl: "https://example.com/expired" },
+      302,
+      "https://example.com/expired",
+      "expired",
+    ],
+    ["expired without fallback", { expiresAt: NOW_SECONDS() - 10 }, 410, null, "expired"],
+  ] as const)(
+    "applies the GET lifecycle policy to POST for an %s link",
+    async (_state, patch, status, location, outcome) => {
+      const link = await createProtected("hunter2");
+      await updateLink(env.DB, link.id, patch, NOW_SECONDS());
+
+      const res = await SELF.fetch("https://link.test/secret", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "password=hunter2",
+        redirect: "manual",
+      });
+
+      expect(res.status).toBe(status);
+      expect(res.headers.get("location")).toBe(location);
+      expect(res.headers.get("set-cookie")).toBeNull();
+      expect((await clickRows()).at(-1)?.outcome).toBe(outcome);
+      const attempts = await env.DB.prepare("SELECT * FROM login_attempts").all();
+      expect(attempts.results).toHaveLength(0);
+    },
+  );
+
+  it("keeps a soft-deleted protected link unavailable on POST", async () => {
+    const link = await createProtected("hunter2");
+    await env.DB.prepare("UPDATE links SET deleted_at = ? WHERE id = ?")
+      .bind(NOW_SECONDS(), link.id)
+      .run();
+
+    const res = await SELF.fetch("https://link.test/secret", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=hunter2",
+      redirect: "manual",
+    });
+
+    expect(res.status).toBe(404);
+    expect(res.headers.get("set-cookie")).toBeNull();
+    expect(await clickRows()).toHaveLength(0);
   });
 
   it("rejects an oversized password before deriving its hash", async () => {
@@ -208,6 +289,117 @@ describe("password-protected links", () => {
 
     expect(second.status).toBe(302);
     expect(second.headers.get("location")).toBe("https://example.com/private");
+  });
+
+  it("invalidates a grant when the password credentials change", async () => {
+    const link = await createProtected("hunter2");
+    const first = await SELF.fetch("https://link.test/secret", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=hunter2",
+      redirect: "manual",
+    });
+    const cookie = (first.headers.get("set-cookie") ?? "").split(";")[0] as string;
+    const salt = randomSalt();
+    await updateLink(
+      env.DB,
+      link.id,
+      { passwordSalt: salt, passwordHash: await hashPassword("different", salt) },
+      NOW_SECONDS(),
+    );
+
+    const res = await SELF.fetch("https://link.test/secret", {
+      headers: { cookie },
+      redirect: "manual",
+    });
+
+    expect(res.status).toBe(401);
+    expect(await res.text()).toContain("Password required");
+  });
+
+  it("does not authorize a different protected link that reuses the slug", async () => {
+    const original = await createProtected("hunter2");
+    const first = await SELF.fetch("https://link.test/secret", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=hunter2",
+      redirect: "manual",
+    });
+    const cookie = (first.headers.get("set-cookie") ?? "").split(";")[0] as string;
+    await updateLink(env.DB, original.id, { slug: "renamed" }, NOW_SECONDS());
+    const replacementSalt = randomSalt();
+    await createLink(
+      env.DB,
+      {
+        slug: "secret",
+        targetUrl: "https://example.com/replacement",
+        passwordSalt: replacementSalt,
+        passwordHash: await hashPassword("different", replacementSalt),
+      },
+      NOW_SECONDS(),
+    );
+
+    const res = await SELF.fetch("https://link.test/secret", {
+      headers: { cookie },
+      redirect: "manual",
+    });
+
+    expect(res.status).toBe(401);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("rejects a legacy slug-only grant", async () => {
+    await createProtected("hunter2");
+    const expiry = NOW_SECONDS() + 600;
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode("test-hash-secret-not-a-real-one-0"),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(`secret:${expiry}`));
+    const hex = Array.from(new Uint8Array(signature))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+
+    const res = await SELF.fetch("https://link.test/secret", {
+      headers: { cookie: `ml_pw_secret=${expiry}.${hex}` },
+      redirect: "manual",
+    });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("accepts exactly 16 KiB of streamed form data despite a low declared length", async () => {
+    await createProtected("hunter2");
+    const res = await SELF.fetch(
+      streamedRequest("https://link.test/secret", formBody("hunter2", 16 * 1024), 1),
+      { redirect: "manual" },
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("https://example.com/private");
+  });
+
+  it("rejects a streamed form above 16 KiB before rate-limit or click writes", async () => {
+    await createProtected("hunter2");
+    const derive = vi.spyOn(crypto.subtle, "deriveBits");
+    const res = await SELF.fetch(
+      streamedRequest("https://link.test/secret", formBody("hunter2", 16 * 1024 + 1), 1),
+      { redirect: "manual" },
+    );
+
+    expect(res.status).toBe(413);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    expect(await res.text()).toMatch(/too large/i);
+    expect(res.headers.get("set-cookie")).toBeNull();
+    expect(derive).not.toHaveBeenCalled();
+    derive.mockRestore();
+    expect(await clickRows()).toHaveLength(0);
+    const attempts = await env.DB.prepare("SELECT * FROM login_attempts").all();
+    expect(attempts.results).toHaveLength(0);
   });
 });
 

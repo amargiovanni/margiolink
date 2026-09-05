@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import qrcode from "qrcode-generator";
 import { z } from "zod";
-import { requireSession } from "../../auth/middleware";
 import {
   countRecentLinks,
   createLink,
@@ -67,8 +66,6 @@ const CREATION_LIMIT_PER_HOUR = 120;
 const CREATION_WINDOW_SECONDS = 3600;
 
 export const links = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
-
-links.use("*", requireSession);
 
 links.get("/", async (c) => {
   const parsed = listSchema.safeParse(c.req.query());
