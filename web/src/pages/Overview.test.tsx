@@ -68,6 +68,15 @@ function renderOverview() {
 }
 
 describe("Overview", () => {
+  it("states what the overview helps the operator decide", async () => {
+    stub(DEFAULT_ROUTES);
+    renderOverview();
+
+    expect(await screen.findByRole("heading", { name: "Overview", level: 1 })).toBeInTheDocument();
+    expect(screen.getByText("Analytics workspace")).toBeInTheDocument();
+    expect(screen.getByText(/what changed and what deserves attention/i)).toBeInTheDocument();
+  });
+
   it("renders the four stat tiles with values from the summary endpoint", async () => {
     stub(DEFAULT_ROUTES);
     renderOverview();

@@ -68,8 +68,8 @@ export async function insertClick(db: D1Database, click: ClickInsert): Promise<v
       click.utm.source,
       click.utm.medium,
       click.utm.campaign,
-      click.utm.term,
-      click.utm.content,
+      null,
+      null,
     )
     .run();
 }

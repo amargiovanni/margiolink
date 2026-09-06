@@ -1,5 +1,6 @@
-const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
-const plain = new Intl.NumberFormat();
+// Keep dashboard numbers stable across browsers and Worker preview locales.
+const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+const plain = new Intl.NumberFormat("en-US");
 
 /** Compact above four digits, exact below — a dashboard should not round 847 to 0.8K. */
 export function formatCount(n: number): string {
@@ -30,7 +31,7 @@ export function formatDateTime(unixSeconds: number): string {
 
 export function formatRelative(unixSeconds: number, now = Date.now()): string {
   const seconds = Math.round(unixSeconds - now / 1000);
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const rtf = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
   const units: [Intl.RelativeTimeFormatUnit, number][] = [
     ["day", 86_400],
     ["hour", 3600],

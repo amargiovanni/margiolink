@@ -1,5 +1,5 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { MoreHorizontal, Pencil, Power, QrCode, RotateCcw, Trash2 } from "lucide-react";
+import { Copy, MoreHorizontal, Pencil, Power, QrCode, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link as RouterLink, useNavigate } from "react-router";
 import { hexToRgb, readableTextColor } from "../../lib/contrast";
@@ -84,6 +84,7 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
   const deleteMutation = useDeleteLink();
   const restoreMutation = useRestoreLink();
   const [editOpen, setEditOpen] = useState(false);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
@@ -132,12 +133,12 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
     // of it under every link. Invisible to the jsdom suite, which has no
     // layout at all; caught the first time anybody photographed the page
     // (`npm run screenshots`), and pinned since by `e2e/links-layout.spec.ts`.
-    <div className="flex flex-col gap-2 border-b border-rule py-3 last:border-b-0 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] sm:items-center sm:gap-4">
+    <div className="group flex flex-col gap-3 border-b border-rule px-2 py-4 transition-colors last:border-b-0 hover:bg-surface-soft/60 focus-within:bg-surface-soft/60 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] sm:items-center sm:gap-4">
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <RouterLink
             to={`/links/${link.id}`}
-            className="font-display text-base text-ink hover:underline"
+            className="font-display text-lg font-semibold text-ink underline-offset-4 hover:text-accent hover:underline"
           >
             {link.slug}
           </RouterLink>
@@ -195,6 +196,13 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
                     Edit
                   </DropdownMenu.Item>
                   <DropdownMenu.Item
+                    onSelect={() => setDuplicateOpen(true)}
+                    className={MENU_ITEM_CLASSNAME}
+                  >
+                    <Copy className="size-4" aria-hidden="true" />
+                    Duplicate
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
                     onSelect={() => navigate(`/links/${link.id}`)}
                     className={MENU_ITEM_CLASSNAME}
                   >
@@ -220,6 +228,19 @@ export function LinkRow({ link, sparkline }: LinkRowProps) {
       </div>
 
       <LinkDialog mode="edit" link={link} open={editOpen} onOpenChange={setEditOpen} />
+
+      <LinkDialog
+        mode="create"
+        open={duplicateOpen}
+        onOpenChange={setDuplicateOpen}
+        initialValues={{
+          targetUrl: link.targetUrl,
+          title: link.title,
+          description: link.description,
+          expiresAt: link.expiresAt,
+          expiredUrl: link.expiredUrl,
+        }}
+      />
 
       <ConfirmDialog
         open={deleteOpen}

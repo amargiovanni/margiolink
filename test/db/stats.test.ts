@@ -1,5 +1,6 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { rollupDay } from "../../src/cron/rollup";
 import { createLink } from "../../src/db/links";
 import {
   DIMENSION_COLUMNS,
@@ -8,6 +9,7 @@ import {
   sparklines,
   summary,
   timeseries,
+  topLinks,
 } from "../../src/db/stats";
 
 const DAY = 86_400;
@@ -68,6 +70,8 @@ async function insert(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(async () => {
+  await env.DB.prepare("DELETE FROM click_daily_dim").run();
+  await env.DB.prepare("DELETE FROM click_daily").run();
   await env.DB.prepare("DELETE FROM clicks").run();
   await env.DB.prepare("DELETE FROM links").run();
   linkId = (await createLink(env.DB, { slug: "s1", targetUrl: "https://e.com" }, BASE)).id;
@@ -112,6 +116,44 @@ describe("summary", () => {
     const result = await summary(env.DB, { from: BASE, to: BASE + DAY, linkId });
     expect(result.clicks).toBe(1);
   });
+
+  it("reads a complete rolled-up day without raw clicks", async () => {
+    await insert({ visitor_hash: "a", country: "IT" });
+    await insert({ visitor_hash: "a", country: "IT" });
+    await insert({ visitor_hash: "bot", is_bot: 1 });
+    await rollupDay(env.DB, "2026-03-10");
+    await env.DB.prepare("DELETE FROM clicks").run();
+
+    await expect(summary(env.DB, { from: BASE, to: BASE + DAY })).resolves.toEqual({
+      clicks: 2,
+      uniques: 1,
+      bots: 1,
+      countries: 1,
+    });
+  });
+
+  it("falls back to raw clicks when a day rollup is missing", async () => {
+    await insert({ visitor_hash: "raw-only" });
+    await rollupDay(env.DB, "2026-03-10");
+    await env.DB.prepare("DELETE FROM click_daily").run();
+
+    await expect(summary(env.DB, { from: BASE, to: BASE + DAY })).resolves.toMatchObject({
+      clicks: 1,
+    });
+  });
+
+  it("keeps partial UTC ranges on raw semantics", async () => {
+    await insert({ visitor_hash: "partial" });
+    await rollupDay(env.DB, "2026-03-10");
+    await env.DB.prepare("DELETE FROM clicks").run();
+
+    await expect(summary(env.DB, { from: BASE + 1, to: BASE + DAY })).resolves.toStrictEqual({
+      clicks: 0,
+      uniques: 0,
+      bots: 0,
+      countries: 0,
+    });
+  });
 });
 
 describe("timeseries", () => {
@@ -152,6 +194,16 @@ describe("timeseries", () => {
     const buckets = await timeseries(env.DB, { from: BASE, to: BASE + 3 * DAY }, "day");
     expect(buckets[0]?.bucket).toBe("2026-03-10");
   });
+
+  it("uses daily rollups for day buckets", async () => {
+    await insert({ visitor_hash: "a" });
+    await rollupDay(env.DB, "2026-03-10");
+    await env.DB.prepare("DELETE FROM clicks").run();
+
+    await expect(timeseries(env.DB, { from: BASE, to: BASE + DAY }, "day")).resolves.toEqual([
+      { bucket: "2026-03-10", clicks: 1, uniques: 1 },
+    ]);
+  });
 });
 
 describe("dimension", () => {
@@ -191,6 +243,25 @@ describe("dimension", () => {
     await insert({ outcome: "redirect", visitor_hash: "b" });
     const slices = await dimension(env.DB, { from: BASE, to: BASE + DAY }, "outcome", 10);
     expect(slices.map((s) => s.value).sort()).toEqual(["password_failed", "redirect"]);
+  });
+
+  it("keeps sensitive dimensions raw when the rollup suppresses them", async () => {
+    await insert({ city: "Private place", visitor_hash: "private" });
+    await rollupDay(env.DB, "2026-03-10");
+
+    await expect(dimension(env.DB, { from: BASE, to: BASE + DAY }, "city", 10)).resolves.toEqual([
+      { value: "Private place", clicks: 1, uniques: 1 },
+    ]);
+  });
+
+  it("uses rolled-up dimensions after raw rows are gone", async () => {
+    await insert({ country: "IT", visitor_hash: "a" });
+    await rollupDay(env.DB, "2026-03-10");
+    await env.DB.prepare("DELETE FROM clicks").run();
+
+    await expect(dimension(env.DB, { from: BASE, to: BASE + DAY }, "country", 10)).resolves.toEqual(
+      [{ value: "IT", clicks: 1, uniques: 1 }],
+    );
   });
 
   const SEEDED_VALUES: Partial<Record<DimensionName, string>> = {
@@ -235,5 +306,26 @@ describe("sparklines", () => {
     const series = map.get(linkId);
     expect(series).toHaveLength(7);
     expect(series?.reduce((a, b) => a + b, 0)).toBe(1);
+  });
+
+  it("uses daily rollups for a closed UTC window", async () => {
+    await insert({ ts: BASE + 3600 });
+    await rollupDay(env.DB, "2026-03-10");
+    await env.DB.prepare("DELETE FROM clicks").run();
+
+    const map = await sparklines(env.DB, 1, BASE + DAY);
+    expect(map.get(linkId)).toEqual([1]);
+  });
+});
+
+describe("topLinks", () => {
+  it("uses daily rollups for a closed UTC window", async () => {
+    await insert({ visitor_hash: "a" });
+    await rollupDay(env.DB, "2026-03-10");
+    await env.DB.prepare("DELETE FROM clicks").run();
+
+    await expect(topLinks(env.DB, { from: BASE, to: BASE + DAY }, 5)).resolves.toEqual([
+      { id: linkId, slug: "s1", title: null, clicks: 1, uniques: 1 },
+    ]);
   });
 });

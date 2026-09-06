@@ -36,6 +36,7 @@ beforeEach(async () => {
   await env.DB.prepare("DELETE FROM admin_sessions").run();
   await env.DB.prepare("DELETE FROM login_attempts").run();
   await env.DB.prepare("DELETE FROM click_daily").run();
+  await env.DB.prepare("DELETE FROM click_daily_dim").run();
   linkId = (await createLink(env.DB, { slug: "ret", targetUrl: "https://e.com" }, NOW)).id;
 });
 
@@ -107,6 +108,34 @@ describe("runRetention", () => {
     expect(row?.clicks).toBe(5);
   });
 
+  it("expires old sensitive dimensions but keeps coarse and recent aggregates", async () => {
+    const oldDay = dayOf(NOW - 181 * DAY);
+    const recentDay = dayOf(NOW - 179 * DAY);
+    const insertDimension = (day: string, dimension: string, value: string) =>
+      env.DB.prepare(
+        `INSERT INTO click_daily_dim (day, link_id, dimension, value, clicks, uniques)
+         VALUES (?, ?, ?, ?, 3, 3)`,
+      )
+        .bind(day, linkId, dimension, value)
+        .run();
+
+    await insertDimension(oldDay, "utm_campaign", "old-campaign");
+    await insertDimension(oldDay, "country", "IT");
+    await insertDimension(recentDay, "utm_campaign", "recent-campaign");
+
+    const result = await runRetention(env.DB, NOW, 180);
+    const { results } = await env.DB.prepare(
+      "SELECT day, dimension, value FROM click_daily_dim ORDER BY day, dimension, value",
+    ).all<{ day: string; dimension: string; value: string }>();
+
+    expect(result.dimensions).toBe(1);
+    expect(result.dimensionsCapped).toBe(false);
+    expect(results).toStrictEqual([
+      { day: oldDay, dimension: "country", value: "IT" },
+      { day: recentDay, dimension: "utm_campaign", value: "recent-campaign" },
+    ]);
+  });
+
   it("removes expired sessions and stale login attempts", async () => {
     await createSession(env.DB, null, NOW - 40 * DAY);
     await env.DB.prepare(
@@ -124,5 +153,6 @@ describe("runRetention", () => {
   it("rejects a non-finite or non-positive retention window", async () => {
     await expect(runRetention(env.DB, NOW, Number.NaN)).rejects.toThrow();
     await expect(runRetention(env.DB, NOW, 0)).rejects.toThrow();
+    await expect(runRetention(env.DB, NOW, 1.5)).rejects.toThrow();
   });
 });

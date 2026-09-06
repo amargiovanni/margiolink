@@ -1,22 +1,24 @@
 import { Hono } from "hono";
 import qrcode from "qrcode-generator";
 import { z } from "zod";
-import { requireSession } from "../../auth/middleware";
 import {
-  countRecentLinks,
   createLink,
   findById,
   type LinkRow,
   listLinks,
+  releaseLinkCreation,
+  reserveLinkCreation,
   restoreLink,
   SlugTakenError,
   softDeleteLink,
   updateLink,
 } from "../../db/links";
 import { setLinkTags, tagsForLinks } from "../../db/tags";
+import { readJsonBody } from "../../lib/body-limit";
 import { hashPassword, randomSalt } from "../../lib/crypto";
 import { isReservedSlug, isValidSlugShape, normaliseSlug } from "../../lib/slug";
 import { validateTargetUrl } from "../../lib/url";
+import { parsePositiveInteger } from "../../lib/validation";
 import type { Env } from "../../types";
 
 export function serialiseLink(link: LinkRow, shortDomain: string) {
@@ -52,23 +54,29 @@ const updateSchema = createSchema.partial().extend({
 });
 
 const listSchema = z.object({
-  search: z.string().optional(),
+  search: z
+    .string()
+    .refine((value) => new TextEncoder().encode(value).byteLength <= 48)
+    .optional(),
   status: z.enum(["all", "active", "inactive", "expired", "deleted"]).optional(),
-  tagId: z.coerce.number().int().positive().optional(),
+  tagId: z
+    .string()
+    .regex(/^[1-9]\d*$/)
+    .transform(Number)
+    .refine(Number.isSafeInteger)
+    .optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
 });
 
 const assignTagsSchema = z.object({
-  tagIds: z.array(z.number().int().positive()).max(20),
+  tagIds: z.array(z.number().int().positive().refine(Number.isSafeInteger)).max(20),
 });
 
 const CREATION_LIMIT_PER_HOUR = 120;
 const CREATION_WINDOW_SECONDS = 3600;
 
 export const links = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
-
-links.use("*", requireSession);
 
 links.get("/", async (c) => {
   const parsed = listSchema.safeParse(c.req.query());
@@ -91,17 +99,20 @@ links.get("/", async (c) => {
 });
 
 links.post("/", async (c) => {
-  const parsed = createSchema.safeParse(await c.req.json().catch(() => null));
+  const body = await readJsonBody(c.req.raw);
+  if (!body.ok) {
+    const status =
+      body.error === "payload_too_large"
+        ? 413
+        : body.error === "unsupported_media_type"
+          ? 415
+          : 400;
+    return c.json({ error: body.error }, status);
+  }
+  const parsed = createSchema.safeParse(body.value);
   if (!parsed.success) return c.json({ error: "invalid_body" }, 400);
 
   const input = parsed.data;
-
-  const windowStart = Math.floor(Date.now() / 1000) - CREATION_WINDOW_SECONDS;
-  if ((await countRecentLinks(c.env.DB, windowStart)) >= CREATION_LIMIT_PER_HOUR) {
-    return c.json({ error: "rate_limited" }, 429, {
-      "retry-after": String(CREATION_WINDOW_SECONDS),
-    });
-  }
 
   const destination = validateTargetUrl(input.targetUrl, c.env.SHORT_DOMAIN);
   if (!destination.ok) return c.json({ error: destination.error }, 422);
@@ -128,6 +139,17 @@ links.post("/", async (c) => {
   }
 
   const now = Math.floor(Date.now() / 1000);
+  const reservation = await reserveLinkCreation(
+    c.env.DB,
+    now,
+    CREATION_LIMIT_PER_HOUR,
+    CREATION_WINDOW_SECONDS,
+  );
+  if (!reservation || reservation.id === 0) {
+    return c.json({ error: "rate_limited" }, 429, {
+      "retry-after": String(reservation?.retryAfter ?? CREATION_WINDOW_SECONDS),
+    });
+  }
 
   try {
     const link = await createLink(
@@ -144,15 +166,19 @@ links.post("/", async (c) => {
       },
       now,
     );
+    await releaseLinkCreation(c.env.DB, reservation.id);
     return c.json({ link: serialiseLink(link, c.env.SHORT_DOMAIN) }, 201);
   } catch (error) {
+    await releaseLinkCreation(c.env.DB, reservation.id);
     if (error instanceof SlugTakenError) return c.json({ error: "slug_taken" }, 409);
     throw error;
   }
 });
 
 links.get("/:id", async (c) => {
-  const link = await findById(c.env.DB, Number(c.req.param("id")));
+  const id = parsePositiveInteger(c.req.param("id"));
+  if (id === null) return c.json({ error: "invalid_id" }, 400);
+  const link = await findById(c.env.DB, id);
   if (!link) return c.json({ error: "not_found" }, 404);
 
   const tagMap = await tagsForLinks(c.env.DB, [link.id]);
@@ -162,10 +188,21 @@ links.get("/:id", async (c) => {
 });
 
 links.put("/:id/tags", async (c) => {
-  const id = Number(c.req.param("id"));
+  const id = parsePositiveInteger(c.req.param("id"));
+  if (id === null) return c.json({ error: "invalid_id" }, 400);
   if (!(await findById(c.env.DB, id))) return c.json({ error: "not_found" }, 404);
 
-  const parsed = assignTagsSchema.safeParse(await c.req.json().catch(() => null));
+  const body = await readJsonBody(c.req.raw);
+  if (!body.ok) {
+    const status =
+      body.error === "payload_too_large"
+        ? 413
+        : body.error === "unsupported_media_type"
+          ? 415
+          : 400;
+    return c.json({ error: body.error }, status);
+  }
+  const parsed = assignTagsSchema.safeParse(body.value);
   if (!parsed.success) return c.json({ error: "invalid_body" }, 400);
 
   await setLinkTags(c.env.DB, id, parsed.data.tagIds);
@@ -173,11 +210,22 @@ links.put("/:id/tags", async (c) => {
 });
 
 links.patch("/:id", async (c) => {
-  const id = Number(c.req.param("id"));
+  const id = parsePositiveInteger(c.req.param("id"));
+  if (id === null) return c.json({ error: "invalid_id" }, 400);
   const existing = await findById(c.env.DB, id);
   if (!existing) return c.json({ error: "not_found" }, 404);
 
-  const parsed = updateSchema.safeParse(await c.req.json().catch(() => null));
+  const body = await readJsonBody(c.req.raw);
+  if (!body.ok) {
+    const status =
+      body.error === "payload_too_large"
+        ? 413
+        : body.error === "unsupported_media_type"
+          ? 415
+          : 400;
+    return c.json({ error: body.error }, status);
+  }
+  const parsed = updateSchema.safeParse(body.value);
   if (!parsed.success) return c.json({ error: "invalid_body" }, 400);
 
   const input = parsed.data;
@@ -233,25 +281,23 @@ links.patch("/:id", async (c) => {
 });
 
 links.delete("/:id", async (c) => {
-  const removed = await softDeleteLink(
-    c.env.DB,
-    Number(c.req.param("id")),
-    Math.floor(Date.now() / 1000),
-  );
+  const id = parsePositiveInteger(c.req.param("id"));
+  if (id === null) return c.json({ error: "invalid_id" }, 400);
+  const removed = await softDeleteLink(c.env.DB, id, Math.floor(Date.now() / 1000));
   return removed ? c.json({ ok: true }) : c.json({ error: "not_found" }, 404);
 });
 
 links.post("/:id/restore", async (c) => {
-  const restored = await restoreLink(
-    c.env.DB,
-    Number(c.req.param("id")),
-    Math.floor(Date.now() / 1000),
-  );
+  const id = parsePositiveInteger(c.req.param("id"));
+  if (id === null) return c.json({ error: "invalid_id" }, 400);
+  const restored = await restoreLink(c.env.DB, id, Math.floor(Date.now() / 1000));
   return restored ? c.json({ ok: true }) : c.json({ error: "not_found" }, 404);
 });
 
 links.get("/:id/qr.svg", async (c) => {
-  const link = await findById(c.env.DB, Number(c.req.param("id")));
+  const id = parsePositiveInteger(c.req.param("id"));
+  if (id === null) return c.json({ error: "invalid_id" }, 400);
+  const link = await findById(c.env.DB, id);
   if (!link) return c.json({ error: "not_found" }, 404);
 
   const qr = qrcode(0, "M");

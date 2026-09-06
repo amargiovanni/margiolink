@@ -36,4 +36,11 @@ describe("StatTile", () => {
     render(<StatTile label="Countries" value={12} />);
     expect(screen.queryByText(/previous period/i)).not.toBeInTheDocument();
   });
+
+  it("uses rail-safe comparison colours on the featured surface", () => {
+    render(<StatTile label="Clicks" value={100} previous={100} featured />);
+
+    expect(screen.getByLabelText(/no change/i).closest("p")).toHaveClass("text-rail-muted");
+    expect(screen.getByText(/previous period/i)).toHaveClass("text-rail-muted");
+  });
 });

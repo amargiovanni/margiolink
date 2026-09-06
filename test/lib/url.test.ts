@@ -38,6 +38,13 @@ describe("validateTargetUrl", () => {
     expect(validateTargetUrl("https://LINK.TEST/abc", DOMAIN).ok).toBe(false);
   });
 
+  it("rejects the short domain with a DNS trailing dot", () => {
+    expect(validateTargetUrl("https://link.test./abc", DOMAIN)).toEqual({
+      ok: false,
+      error: "self_reference",
+    });
+  });
+
   it("rejects URLs longer than 2048 characters", () => {
     const long = `https://example.com/${"a".repeat(2100)}`;
     expect(validateTargetUrl(long, DOMAIN)).toEqual({ ok: false, error: "too_long" });

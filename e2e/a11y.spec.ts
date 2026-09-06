@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import type { Page } from "@playwright/test";
+import type { Page, Request } from "@playwright/test";
 import { expect, login, test } from "./fixtures";
 
 /**
@@ -146,6 +146,47 @@ async function assertChartsAreNamed(page: Page, label: string): Promise<void> {
 }
 
 async function sweep(page: Page, label: string): Promise<void> {
+  const pending = new Set<Request>();
+  const started = (request: Request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/stats/")) pending.add(request);
+  };
+  const finished = (request: Request) => pending.delete(request);
+  page.on("request", started);
+  page.on("requestfinished", finished);
+  page.on("requestfailed", finished);
+  // Exercise every deferred chart before axe and structural checks. Otherwise
+  // laziness would silently turn this into a placeholders-only audit.
+  await page.locator("[data-deferred-panel]").evaluateAll((panels) => {
+    for (const panel of panels) {
+      const button = Array.from(panel.querySelectorAll("button")).find((button) =>
+        button.textContent?.startsWith("Load "),
+      );
+      button?.click();
+    }
+  });
+  // Other browser scenarios share the seeded local D1 and may create enough
+  // links to make the paginated Links view show another page. Exhaust that
+  // pagination so this accessibility sweep depends on the rendered surface,
+  // not on test ordering or an incidental row count.
+  const loadMore = page.getByRole("button", { name: /^Load / });
+  while (await loadMore.count()) {
+    await loadMore.first().click();
+    await expect(loadMore.first())
+      .toBeHidden({ timeout: 10_000 })
+      .catch(() => undefined);
+  }
+  await expect(page.getByRole("button", { name: /^Load / })).toHaveCount(0);
+  await expect.poll(() => pending.size).toBe(0);
+  page.off("request", started);
+  page.off("requestfinished", finished);
+  page.off("requestfailed", finished);
+  await expect(page.getByText("Loading…", { exact: true })).toHaveCount(0);
+  if (label.startsWith("Overview") || label.startsWith("LinkDetail")) {
+    await expect(page.locator('[data-deferred-panel="Activity by hour"] [data-cell]')).toHaveCount(
+      168,
+    );
+  }
+
   await assertNoSeriousViolations(page, label);
   await assertHeadingContract(page, label);
   await assertChartsAreNamed(page, label);

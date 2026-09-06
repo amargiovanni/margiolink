@@ -37,7 +37,7 @@ describe("readableTextColor", () => {
     "#000000", // pure black
     "#ffffff", // pure white
     "#e66767", // the critical token colour
-    "#8a5e12", // the light-mode accent colour
+    "#80560b", // the light-mode accent colour
   ])("guarantees at least a 4.58:1 ratio against %s", (hex) => {
     expect(ratioForChosenColor(hex)).toBeGreaterThanOrEqual(GUARANTEED_MIN_RATIO - 0.01);
   });

@@ -59,6 +59,9 @@ function localInputToUnix(value: string): number {
 export interface LinkFormProps {
   mode: "create" | "edit";
   link?: Link;
+  initialValues?: Partial<
+    Pick<Link, "targetUrl" | "title" | "description" | "expiresAt" | "expiredUrl">
+  >;
   /** Called once the mutation has succeeded. In create mode it is called
    *  with the new link, so the caller (LinkDialog) can copy its short URL
    *  and announce that in a toast that outlives this form — the form itself
@@ -100,7 +103,7 @@ const inputClassName =
  *  ever leave the browser, but the API stays authoritative: every error code
  *  it can return is mapped to a field or a banner in `FIELD_ERROR_CODES`
  *  below, rather than trusting the client schema to have already caught it. */
-export function LinkForm({ mode, link, onDone }: LinkFormProps) {
+export function LinkForm({ mode, link, initialValues, onDone }: LinkFormProps) {
   const [banner, setBanner] = useState<string | null>(null);
   const [tagIds, setTagIds] = useState<number[]>(() => link?.tags.map((tag) => tag.id) ?? []);
   const [passwordRemoved, setPasswordRemoved] = useState(false);
@@ -119,12 +122,16 @@ export function LinkForm({ mode, link, onDone }: LinkFormProps) {
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      targetUrl: link?.targetUrl ?? "",
+      targetUrl: link?.targetUrl ?? initialValues?.targetUrl ?? "",
       slug: link?.slug ?? "",
-      title: link?.title ?? "",
-      description: link?.description ?? "",
-      expiresAt: link?.expiresAt ? unixToLocalInput(link.expiresAt) : "",
-      expiredUrl: link?.expiredUrl ?? "",
+      title: link?.title ?? initialValues?.title ?? "",
+      description: link?.description ?? initialValues?.description ?? "",
+      expiresAt: link?.expiresAt
+        ? unixToLocalInput(link.expiresAt)
+        : initialValues?.expiresAt
+          ? unixToLocalInput(initialValues.expiresAt)
+          : "",
+      expiredUrl: link?.expiredUrl ?? initialValues?.expiredUrl ?? "",
       password: "",
     },
   });

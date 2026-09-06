@@ -1,51 +1,50 @@
 /**
  * Statistics API.
  *
- * Two limits of these responses are not surfaced to a consumer, and the
- * dashboard has to account for both:
+ * Two limits define how consumers must read these responses:
  *
- * 1. **A range extending past the retention window silently under-reports.**
- *    Every endpoint here reads raw `clicks` only. Rows older than
- *    `RAW_RETENTION_DAYS` have been deleted by `src/cron/retention.ts`, so a
- *    query covering them returns a smaller number that looks exactly like a
- *    complete one. The aggregate tables written for this case
- *    (`click_daily`, `click_daily_dim`) are not consulted, and no response
- *    carries a "truncated at" marker.
+ * 1. **A range cannot extend past raw-data retention.** Its lower bound is
+ *    clamped and the response carries the requested/effective cutoff in
+ *    `meta`. Complete, closed UTC-day ranges use the daily rollups; partial,
+ *    open, and not-yet-rolled-up ranges automatically use raw `clicks`.
+ *    Sensitive dimensions also stay raw because their daily rollups suppress
+ *    low-count values and cannot reproduce the raw breakdown.
  * 2. **Summed daily `uniques` over-count a returning visitor.** `uniques` is
  *    `COUNT(DISTINCT visitor_hash)`, and the hash rotates at UTC midnight by
  *    design, so a visitor returning on three days counts three times over a
  *    multi-day range — in `summary`, in `dimension`, and in `timeseries` at
  *    day and week granularity. This is the accepted consequence of the privacy
- *    design, not a bug, but the response is a bare integer with no field the
- *    dashboard could hang an honest label on.
- *
- * Both are recorded here rather than fixed because the fix — a `meta` block
- * naming the oldest retained timestamp, whether the range was truncated, and
- * that uniques are daily-distinct — changes the response shape the dashboard
- * will consume, and belongs with the dashboard work that reads it.
+ *    design, not a bug. `meta.uniquesDefinition` makes the semantic explicit.
  */
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireSession } from "../../auth/middleware";
 import { recentClicks } from "../../db/clicks";
 import {
   DIMENSION_COLUMNS,
   type DimensionName,
   dimension,
   type Granularity,
+  type StatsRange,
   sparklines,
   summary,
   timeseries,
   topLinks,
 } from "../../db/stats";
+import { requireRetentionDays } from "../../lib/config";
+import { cachedStats } from "../../lib/stats-cache";
 import type { Env } from "../../types";
 
 const rangeSchema = z
   .object({
     from: z.coerce.number().int().nonnegative(),
     to: z.coerce.number().int().positive(),
-    linkId: z.coerce.number().int().positive().optional(),
+    linkId: z
+      .string()
+      .regex(/^[1-9]\d*$/)
+      .transform(Number)
+      .refine(Number.isSafeInteger)
+      .optional(),
   })
   .refine((value) => value.from < value.to, { message: "from must be before to" });
 
@@ -72,27 +71,73 @@ const dimensionNames = Object.keys(DIMENSION_COLUMNS) as [DimensionName, ...Dime
  *  cap to the one bounded dimension's actual maximum rather than special
  *  -casing `name` in the schema. */
 const DIMENSION_LIMIT_MAX = 168;
+const DAY_SECONDS = 86_400;
+
+export interface StatsMeta {
+  requestedFrom: number;
+  effectiveFrom: number;
+  retentionCutoff: number;
+  truncated: boolean;
+  uniquesDefinition: "daily-rotating-visitor-hash";
+}
+
+export function normaliseStatsRange(
+  range: StatsRange,
+  now: number,
+  retentionDays: number,
+): { range: StatsRange; meta: StatsMeta } {
+  requireRetentionDays(retentionDays);
+
+  const retentionCutoff = now - retentionDays * DAY_SECONDS;
+  const effectiveFrom = Math.max(range.from, retentionCutoff);
+  return {
+    range: { ...range, from: effectiveFrom },
+    meta: {
+      requestedFrom: range.from,
+      effectiveFrom,
+      retentionCutoff,
+      truncated: effectiveFrom !== range.from,
+      uniquesDefinition: "daily-rotating-visitor-hash",
+    },
+  };
+}
+
+function rangeForEnv(env: Env, range: StatsRange): { range: StatsRange; meta: StatsMeta } {
+  return normaliseStatsRange(
+    range,
+    Math.floor(Date.now() / 1000),
+    requireRetentionDays(env.RAW_RETENTION_DAYS),
+  );
+}
 
 export const stats = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
 
-stats.use("*", requireSession);
-
 stats.get("/summary", async (c) => {
+  c.header("Cache-Control", "private, no-store");
   const parsed = rangeSchema.safeParse(c.req.query());
   if (!parsed.success) return c.json({ error: "invalid_range" }, 400);
 
   const { from, to, linkId } = parsed.data;
   const span = to - from;
+  const normalized = rangeForEnv(c.env, parsed.data);
+  const previousRange: StatsRange = {
+    from: Math.max(normalized.meta.retentionCutoff, from - span),
+    to: Math.max(normalized.meta.retentionCutoff, from),
+    ...(linkId === undefined ? {} : { linkId }),
+  };
 
-  const [current, previous] = await Promise.all([
-    summary(c.env.DB, { from, to, linkId }),
-    summary(c.env.DB, { from: from - span, to: from, linkId }),
-  ]);
+  return cachedStats(c, normalized.meta, to, from - span, async () => {
+    const [current, previous] = await Promise.all([
+      summary(c.env.DB, normalized.range),
+      summary(c.env.DB, previousRange),
+    ]);
 
-  return c.json({ current, previous, range: { from, to } });
+    return { current, previous, range: { from, to } };
+  });
 });
 
 stats.get("/timeseries", async (c) => {
+  c.header("Cache-Control", "private, no-store");
   const parsed = rangeSchema.safeParse(c.req.query());
   if (!parsed.success) return c.json({ error: "invalid_range" }, 400);
 
@@ -101,11 +146,15 @@ stats.get("/timeseries", async (c) => {
     return c.json({ error: "invalid_granularity" }, 400);
   }
 
-  const buckets = await timeseries(c.env.DB, parsed.data, granularity as Granularity);
-  return c.json({ buckets, granularity });
+  const normalized = rangeForEnv(c.env, parsed.data);
+  return cachedStats(c, normalized.meta, parsed.data.to, parsed.data.from, async () => {
+    const buckets = await timeseries(c.env.DB, normalized.range, granularity as Granularity);
+    return { buckets, granularity };
+  });
 });
 
 stats.get("/dimension", async (c) => {
+  c.header("Cache-Control", "private, no-store");
   const parsed = rangeSchema.safeParse(c.req.query());
   if (!parsed.success) return c.json({ error: "invalid_range" }, 400);
 
@@ -120,11 +169,15 @@ stats.get("/dimension", async (c) => {
     .safeParse(c.req.query("limit") ?? 20);
   if (!limit.success) return c.json({ error: "invalid_limit" }, 400);
 
-  const slices = await dimension(c.env.DB, parsed.data, name.data, limit.data);
-  return c.json({ slices, dimension: name.data });
+  const normalized = rangeForEnv(c.env, parsed.data);
+  return cachedStats(c, normalized.meta, parsed.data.to, parsed.data.from, async () => {
+    const slices = await dimension(c.env.DB, normalized.range, name.data, limit.data);
+    return { slices, dimension: name.data };
+  });
 });
 
 stats.get("/top-links", async (c) => {
+  c.header("Cache-Control", "private, no-store");
   const parsed = topLinksRangeSchema.safeParse(c.req.query());
   if (!parsed.success) return c.json({ error: "invalid_range" }, 400);
 
@@ -136,11 +189,15 @@ stats.get("/top-links", async (c) => {
     .safeParse(c.req.query("limit") ?? 5);
   if (!limit.success) return c.json({ error: "invalid_limit" }, 400);
 
-  const links = await topLinks(c.env.DB, parsed.data, limit.data);
-  return c.json({ links });
+  const normalized = rangeForEnv(c.env, parsed.data);
+  return cachedStats(c, normalized.meta, parsed.data.to, parsed.data.from, async () => {
+    const links = await topLinks(c.env.DB, normalized.range, limit.data);
+    return { links };
+  });
 });
 
 stats.get("/live", async (c) => {
+  c.header("Cache-Control", "private, no-store");
   const limit = z.coerce
     .number()
     .int()
@@ -149,7 +206,13 @@ stats.get("/live", async (c) => {
     .safeParse(c.req.query("limit") ?? 50);
   if (!limit.success) return c.json({ error: "invalid_limit" }, 400);
 
-  const linkId = z.coerce.number().int().positive().optional().safeParse(c.req.query("linkId"));
+  const linkId = z
+    .string()
+    .regex(/^[1-9]\d*$/)
+    .transform(Number)
+    .refine(Number.isSafeInteger)
+    .optional()
+    .safeParse(c.req.query("linkId"));
   if (!linkId.success) return c.json({ error: "invalid_link" }, 400);
 
   const clicks = await recentClicks(c.env.DB, limit.data, linkId.data);
@@ -172,6 +235,7 @@ stats.get("/live", async (c) => {
 });
 
 stats.get("/sparklines", async (c) => {
+  c.header("Cache-Control", "private, no-store");
   const days = z.coerce
     .number()
     .int()

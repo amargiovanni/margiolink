@@ -242,3 +242,59 @@ export async function countRecentLinks(db: D1Database, since: number): Promise<n
     .first<{ total: number }>();
   return row?.total ?? 0;
 }
+
+export interface LinkCreationReservation {
+  id: number;
+  retryAfter: number;
+}
+
+/**
+ * Reserve one creation slot in the same D1 write that checks the current
+ * count. The reservation closes the check-then-insert race between concurrent
+ * requests; it is released after the link is created (or when creation fails).
+ */
+export async function reserveLinkCreation(
+  db: D1Database,
+  now: number,
+  limit: number,
+  windowSeconds: number,
+): Promise<LinkCreationReservation | null> {
+  const since = now - windowSeconds;
+  const reservation = await db
+    .prepare(
+      `INSERT INTO link_creation_reservations (reserved_at)
+       SELECT ?
+       WHERE (
+         (SELECT COUNT(*) FROM links WHERE created_at >= ?) +
+         (SELECT COUNT(*) FROM link_creation_reservations WHERE reserved_at >= ?)
+       ) < ?
+       RETURNING id`,
+    )
+    .bind(now, since, since, limit)
+    .first<{ id: number }>();
+
+  if (reservation) return { id: reservation.id, retryAfter: 0 };
+
+  const oldest = await db
+    .prepare(
+      `SELECT MIN(created_at) AS oldest
+       FROM (
+         SELECT created_at FROM links WHERE created_at >= ?
+         UNION ALL
+         SELECT reserved_at AS created_at
+         FROM link_creation_reservations
+         WHERE reserved_at >= ?
+       )`,
+    )
+    .bind(since, since)
+    .first<{ oldest: number | null }>();
+
+  return {
+    id: 0,
+    retryAfter: Math.max(1, (oldest?.oldest ?? now) + windowSeconds - now),
+  };
+}
+
+export async function releaseLinkCreation(db: D1Database, id: number): Promise<void> {
+  await db.prepare("DELETE FROM link_creation_reservations WHERE id = ?").bind(id).run();
+}

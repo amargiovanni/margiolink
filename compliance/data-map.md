@@ -9,15 +9,16 @@ schema drops it. Only the first cell of each row is read, so a name mentioned
 in prose elsewhere in this file cannot pass a column off as documented.
 
 **Controller:** Andrea Margiovanni — andrea@margiovanni.it
-**Retention:** 180 days for every row below (`RAW_RETENTION_DAYS` in
+**Retention:** 180 days for every raw row below (`RAW_RETENTION_DAYS` in
 `wrangler.jsonc`), then deletion by `runRetention` in `src/cron/retention.ts`,
 which the `30 3 * * *` cron trigger runs once daily. `click_daily` holds a
-count of clicks/uniques/bots per link per day. `click_daily_dim` holds a count
-grouped by one dimension's **value** — a city name, a referrer host, a browser
-name, and so on — retained indefinitely alongside that count. Both remain
-non-personal not because the value is absent, but because no individual is
-identifiable in either table: the rows are grouped counts with no visitor
-identifier and no row-per-person structure.
+count of clicks/uniques/bots per link per day indefinitely. `click_daily_dim`
+holds grouped counts: coarse dimensions are retained indefinitely, while
+`city`, `asn_org`, `referrer_host`, and the three supported UTM dimensions use
+the same 180-day window as raw rows. Those sensitive dimensions are written
+only when at least three non-bot clicks share a value for one link and day.
+The threshold and finite retention reduce singling-out risk; this document does
+not treat grouping alone as proof that arbitrary values are anonymous.
 **Legal basis for all of the below:** Article 6(1)(f) — see
 `legitimate-interest-assessment.md`.
 **Status:** drafted by Claude against the schema and the code that writes to
@@ -44,7 +45,8 @@ pending human sign-off.
 | `browser`, `browser_version` | Yes, in combination | Which browsers the audience uses |
 | `language` | Yes, in combination | Audience language (`Accept-Language`, first value), for content decisions |
 | `referrer_host`, `referrer_type` | Yes, in combination | Which channel drove the traffic — the referring host and its classification, never the referring URL (`src/lib/referrer.ts`) |
-| `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content` | No | Campaign parameters the controller placed in the link, read back from its own query string |
+| `utm_source`, `utm_medium`, `utm_campaign` | Yes, in combination | Campaign labels read from the public query string after trimming; accepted only when they contain 1–64 ASCII letters, digits, `.`, `_`, `~`, or `-` |
+| `utm_term`, `utm_content` | No — legacy, no longer populated | Nullable columns retained for schema compatibility; request ingestion and demo data always write `NULL` |
 
 ## Deliberately not collected
 
@@ -84,7 +86,7 @@ processing activity needs its own record.
 | Categories of data | Pseudonymous visitor identifier, timestamp, coarse geography, device/browser, referrer, campaign parameters — see the `clicks` table above |
 | Categories of recipients | None outside the controller. The database (Cloudflare D1) and the compute (Cloudflare Workers) are processed on Cloudflare's infrastructure as a processor; no analytics data is shared with any other third party |
 | International transfers | Processed on Cloudflare's infrastructure; the applicable transfer mechanism is governed by the controller's agreement with Cloudflare and is not re-derived here |
-| Retention | 180 days raw, indefinite in aggregate — see the header above |
+| Retention | 180 days raw and for sensitive dimension aggregates; daily totals and coarse aggregates are indefinite — see the header above |
 | Security measures | Pseudonymisation via daily-rotating HMAC (`src/lib/crypto.ts`), no raw IP/user-agent persisted, TLS in transit via the Cloudflare edge, admin access gated by session auth (see `docs/superpowers/specs/2026-09-01-margiolink-design.md` §5) |
 
 ## Deliberately not collected — cookies

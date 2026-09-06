@@ -107,6 +107,17 @@ describe("TimeSeries", () => {
     expect(labels.length).toBeGreaterThan(0);
   });
 
+  it("formats calendar buckets in local time instead of shifting date-only values through UTC", () => {
+    render(
+      <TimeSeries buckets={[{ bucket: "2026-03-10", clicks: 1, uniques: 1 }]} granularity="day" />,
+    );
+    expect(
+      screen.getByText(
+        new Date(2026, 2, 10).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("gives the plot tabIndex 0 and a slider role, so it is reachable without a pointer", () => {
     render(<TimeSeries buckets={buckets} granularity="day" />);
     const plot = screen.getByRole("slider");

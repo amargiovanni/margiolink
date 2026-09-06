@@ -62,7 +62,16 @@ test.describe("delete and restore — the unreachable-reversal defect (Important
     await ensureActiveFixture(page);
 
     await page.goto("/app/links");
+    const filteredLinksResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname === "/api/links" &&
+        url.searchParams.get("search") === RESTORE_SLUG &&
+        response.status() === 200
+      );
+    });
     await page.getByRole("searchbox", { name: /search/i }).fill(RESTORE_SLUG);
+    await filteredLinksResponse;
     await expect(page.getByText(RESTORE_SLUG)).toBeVisible();
 
     // Delete through the real confirmation — the exact copy this branch's

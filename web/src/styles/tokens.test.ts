@@ -74,7 +74,7 @@ describe("design tokens", () => {
     // The accent must never be reachable as a data colour.
     const seriesBlock = css.match(/--color-series-\d: #[0-9a-f]{6};/g) ?? [];
     expect(seriesBlock.join(" ")).not.toContain("#d89b2e");
-    expect(seriesBlock.join(" ")).not.toContain("#8a5e12");
+    expect(seriesBlock.join(" ")).not.toContain("#80560b");
   });
 
   it.each(Object.entries(DARK_STATUS))("keeps the validated dark %s status colour", (name, hex) => {

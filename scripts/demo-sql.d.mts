@@ -15,6 +15,10 @@ import type { DemoData } from "./demo-data.mjs";
  */
 export declare const ROLLUP_DIMENSIONS: Record<string, string>;
 
+/** High-cardinality dimensions that production and the demo rollup suppress
+ *  below three clicks per link/day. */
+export declare const SENSITIVE_ROLLUP_DIMENSIONS: ReadonlySet<string>;
+
 /** The `clicks` columns the seed writes, in insert order — every column of the
  *  table except its `id`. */
 export declare const CLICK_COLUMNS: readonly string[];

@@ -1,8 +1,11 @@
-import { SELF } from "cloudflare:test";
+import { createExecutionContext, env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { requireSession } from "../../src/auth/middleware";
+import { createSession } from "../../src/db/sessions";
 import { app } from "../../src/index";
+import { securityHeaders } from "../../src/lib/security-headers";
 import { PUBLIC_API_ROUTES } from "../../src/routes/api";
+import type { Env } from "../../src/types";
 
 /**
  * The one API route that may answer an anonymous caller. Pinned as a literal so
@@ -18,13 +21,7 @@ const EXPECTED_PUBLIC_API_ROUTES = ["POST /api/auth/login"];
  * by identity of the handler, never by a blanket `method !== "ALL"` filter,
  * which would also hide a genuine `all()` handler from this test.
  */
-const EXPECTED_SESSION_MIDDLEWARE_PATHS = [
-  "/api/*",
-  "/api/links/*",
-  "/api/tags/*",
-  "/api/stats/*",
-  "/api/meta/*",
-];
+const EXPECTED_SESSION_MIDDLEWARE_PATHS = ["/api/*"];
 
 /**
  * Every route outside `/api`, all of them intentionally reachable without a
@@ -37,6 +34,7 @@ const EXPECTED_SESSION_MIDDLEWARE_PATHS = [
  */
 const EXPECTED_PUBLIC_NON_API_ROUTES = [
   "GET /_health",
+  "GET /_ready",
   "GET /app",
   "GET /app/*",
   "GET /privacy",
@@ -68,6 +66,35 @@ describe("API authorization coverage", () => {
       [...EXPECTED_SESSION_MIDDLEWARE_PATHS].sort(),
     );
     expect(sessionMiddleware.every((route) => route.method === "ALL")).toBe(true);
+  });
+
+  it("reads an authenticated session exactly once for a private request", async () => {
+    const token = await createSession(env.DB, null, Math.floor(Date.now() / 1000));
+    const queries: string[] = [];
+    const db = new Proxy(env.DB, {
+      get(target, property) {
+        if (property === "prepare") {
+          return (sql: string) => {
+            queries.push(sql);
+            return target.prepare(sql);
+          };
+        }
+        const value = Reflect.get(target, property);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const ctx = createExecutionContext();
+
+    const res = await app.fetch(
+      new Request("https://link.test/api/meta", {
+        headers: { cookie: `__Host-ml_session=${token}` },
+      }),
+      { ...env, DB: db } as unknown as Env,
+      ctx,
+    );
+
+    expect(res.status).toBe(200);
+    expect(queries.filter((sql) => sql.startsWith("SELECT * FROM admin_sessions"))).toHaveLength(1);
   });
 
   it("registers no ALL-method API route other than that middleware", () => {
@@ -102,6 +129,7 @@ describe("routes outside /api", () => {
   it("are exactly the ones intended to be public", () => {
     const nonApi = app.routes
       .filter((route) => !route.path.startsWith("/api"))
+      .filter((route) => route.handler !== securityHeaders)
       .map((route) => `${route.method} ${route.path}`);
 
     expect(nonApi.sort()).toEqual([...EXPECTED_PUBLIC_NON_API_ROUTES].sort());

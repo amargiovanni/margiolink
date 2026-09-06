@@ -2,10 +2,10 @@
  * The landing page's only script.
  *
  * Everything here is an enhancement of a page that is already complete
- * without it: the copy, the screenshots, the ledger and the install steps are
+ * without it: the copy, the screenshots, the privacy details and the setup steps are
  * all in the HTML, and `index.html`'s inline bootstrap removes the `js` class
  * again if this module never loads, so a failure here costs a theme button
- * and two animations rather than the page.
+ * and entrance animations rather than the page.
  *
  * No framework: the dashboard is React because it is an application, and this
  * is a document.
@@ -29,7 +29,7 @@ const THEME_KEY = "margiolink:theme";
 type Theme = "dark" | "light";
 
 /** The theme actually in force: an explicit choice if one is stored, and
- *  otherwise whatever the OS is asking for — which is what `tokens.css`'s
+ *  otherwise whatever the OS is asking for — which is what `landing.css`'s
  *  media query is already honouring. */
 function activeTheme(): Theme {
   const stamped = root.getAttribute("data-theme");
@@ -87,54 +87,4 @@ if (wantsLessMotion || !("IntersectionObserver" in window)) {
   );
 
   for (const element of revealable) observer.observe(element);
-}
-
-/* -------------------------------------------------------------- hash demo */
-
-/**
- * The figure in section 02, ticking.
- *
- * It advances the daily key by one day every few seconds and shows the
- * completely different code the same visitor gets under it — the one claim on
- * the page that is much easier to see than to read. The codes are
- * `crypto.getRandomValues`, not a real HMAC: the point being demonstrated is
- * that consecutive days share nothing, and computing a genuine hash of a
- * fictional IP would suggest the visitor is looking at their own.
- */
-const dayElement = document.querySelector<HTMLElement>("[data-hash-day]");
-const codeElement = document.querySelector<HTMLElement>("[data-hash-code]");
-const noteElement = document.querySelector<HTMLElement>("[data-hash-note]");
-
-if (dayElement && codeElement && !wantsLessMotion) {
-  const start = new Date();
-  let offset = 0;
-
-  const randomCode = () => {
-    const bytes = crypto.getRandomValues(new Uint8Array(8));
-    return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-  };
-
-  const tick = () => {
-    offset += 1;
-    const day = new Date(start.getTime() + offset * 86_400_000).toISOString().slice(0, 10);
-    dayElement.textContent = `secret : ${day}`;
-    codeElement.textContent = randomCode();
-    if (noteElement) {
-      noteElement.textContent =
-        offset === 1 ? "Midnight UTC — same visitor, new code" : "Rotates at 00:00 UTC";
-    }
-  };
-
-  dayElement.textContent = `secret : ${start.toISOString().slice(0, 10)}`;
-
-  let timer = window.setInterval(tick, 3200);
-
-  // A demo nobody is looking at is a timer nobody needs.
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      window.clearInterval(timer);
-    } else {
-      timer = window.setInterval(tick, 3200);
-    }
-  });
 }

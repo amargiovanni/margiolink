@@ -30,14 +30,20 @@ const MAX_X_LABELS = 8;
 const PLOT_LEFT_PCT = (MARGIN.left / WIDTH) * 100;
 const PLOT_RIGHT_PCT = (MARGIN.right / WIDTH) * 100;
 
-/** Bucket strings come straight from the API's SQL expressions: "day" and
- *  "week" are `date(...)` (YYYY-MM-DD), "hour" is `strftime('%Y-%m-%dT%H:00')`
- *  — both parseable, but the hour form carries no timezone designator so it
- *  is treated as local time, which is what the API's ts column already is
- *  for display purposes here. */
+/** API buckets are local calendar values, not instants. Parsing a date-only
+ *  value with `new Date(string)` treats it as UTC and shifts labels by a day
+ *  for users west of UTC. */
+function parseBucketDate(bucket: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):\d{2})?$/.exec(bucket);
+  if (!match) return null;
+  const [, year, month, day, hour = "0"] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function labelFor(bucket: string, granularity: TimeSeriesGranularity): string {
-  const date = new Date(bucket);
-  if (Number.isNaN(date.getTime())) return bucket;
+  const date = parseBucketDate(bucket);
+  if (!date) return bucket;
   if (granularity === "hour") {
     return date.toLocaleTimeString(undefined, { hour: "numeric" });
   }

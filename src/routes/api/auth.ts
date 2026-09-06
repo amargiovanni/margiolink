@@ -1,8 +1,7 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
-import { requireSession } from "../../auth/middleware";
-import { checkLoginAllowed, clearLoginFailures, registerLoginFailure } from "../../auth/rate-limit";
+import { clearLoginFailures, reserveLoginAttempt } from "../../auth/rate-limit";
 import { SESSION_COOKIE, SESSION_MAX_AGE, summariseUserAgent } from "../../auth/session";
 import {
   createSession,
@@ -11,14 +10,15 @@ import {
   destroySessionById,
   listSessions,
 } from "../../db/sessions";
+import { readJsonBody } from "../../lib/body-limit";
 import { constantTimeEquals, ipHash } from "../../lib/crypto";
-import { requireHashSecret } from "../../lib/secrets";
+import { requireAdminPassword, requireHashSecret } from "../../lib/secrets";
 import { parseClient } from "../../lib/ua";
 import type { Env } from "../../types";
 
 const loginSchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(1),
+  username: z.string().min(1).max(200),
+  password: z.string().min(1).max(200),
 });
 
 export const publicAuth = new Hono<{ Bindings: Env }>();
@@ -28,16 +28,25 @@ publicAuth.post("/auth/login", async (c) => {
   // the lockout table keyed on a guessable value. Refuse rather than throttle
   // on a key an attacker can compute.
   const secret = requireHashSecret(c.env);
+  const adminPassword = requireAdminPassword(c.env);
 
-  const parsed = loginSchema.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) {
-    return c.json({ error: "invalid_body" }, 400);
+  const body = await readJsonBody(c.req.raw);
+  if (!body.ok) {
+    const status =
+      body.error === "payload_too_large"
+        ? 413
+        : body.error === "unsupported_media_type"
+          ? 415
+          : 400;
+    return c.json({ error: body.error }, status);
   }
+  const parsed = loginSchema.safeParse(body.value);
+  if (!parsed.success) return c.json({ error: "invalid_body" }, 400);
 
   const now = Math.floor(Date.now() / 1000);
   const key = await ipHash(secret, c.req.header("cf-connecting-ip") ?? "", now);
 
-  const limit = await checkLoginAllowed(c.env.DB, key, now);
+  const limit = await reserveLoginAttempt(c.env.DB, key, now);
   if (!limit.allowed) {
     return c.json({ error: "too_many_attempts" }, 429, {
       "retry-after": String(limit.retryAfter),
@@ -46,11 +55,10 @@ publicAuth.post("/auth/login", async (c) => {
 
   const [userOk, passwordOk] = await Promise.all([
     constantTimeEquals(parsed.data.username, c.env.ADMIN_USER),
-    constantTimeEquals(parsed.data.password, c.env.ADMIN_PASSWORD),
+    constantTimeEquals(parsed.data.password, adminPassword),
   ]);
 
   if (!userOk || !passwordOk) {
-    await registerLoginFailure(c.env.DB, key, now);
     return c.json({ error: "invalid_credentials" }, 401);
   }
 
@@ -71,8 +79,6 @@ publicAuth.post("/auth/login", async (c) => {
 });
 
 export const privateAuth = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
-
-privateAuth.use("*", requireSession);
 
 privateAuth.post("/auth/logout", async (c) => {
   const token = getCookie(c, SESSION_COOKIE);

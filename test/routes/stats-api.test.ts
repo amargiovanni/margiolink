@@ -1,9 +1,12 @@
 import { env, SELF } from "cloudflare:test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { rollupDay } from "../../src/cron/rollup";
 import { createLink, softDeleteLink } from "../../src/db/links";
 
 const DAY = 86_400;
 const BASE = Date.parse("2026-03-10T00:00:00Z") / 1000;
+const NOW = Date.parse("2026-09-04T12:00:00Z") / 1000;
+const RETENTION_CUTOFF = NOW - 180 * DAY;
 let cookie = "";
 let linkId = 0;
 let otherLinkId = 0;
@@ -23,6 +26,9 @@ async function insertClick(ts: number, overrides: Record<string, unknown> = {}) 
 }
 
 beforeEach(async () => {
+  vi.spyOn(Date, "now").mockReturnValue(NOW * 1000);
+  await env.DB.prepare("DELETE FROM click_daily_dim").run();
+  await env.DB.prepare("DELETE FROM click_daily").run();
   await env.DB.prepare("DELETE FROM clicks").run();
   await env.DB.prepare("DELETE FROM links").run();
   await env.DB.prepare("DELETE FROM admin_sessions").run();
@@ -39,11 +45,61 @@ beforeEach(async () => {
   cookie = (res.headers.get("set-cookie") ?? "").split(";")[0] as string;
 });
 
+afterEach(() => vi.restoreAllMocks());
+
 function api(path: string) {
   return SELF.fetch(`https://link.test${path}`, { headers: { cookie } });
 }
 
 describe("GET /api/stats/summary", () => {
+  it("serves a complete closed day from its rollup", async () => {
+    await insertClick(BASE + 1, { visitor_hash: "rolled" });
+    await rollupDay(env.DB, "2026-03-10");
+    await env.DB.prepare("DELETE FROM clicks").run();
+
+    const res = await api(`/api/stats/summary?from=${BASE}&to=${BASE + DAY}`);
+    const body = (await res.json()) as { current: { clicks: number; uniques: number } };
+    expect(body.current).toMatchObject({ clicks: 1, uniques: 1 });
+  });
+
+  it("clamps an older request and reports the retained range semantics", async () => {
+    await insertClick(RETENTION_CUTOFF - 1);
+    await insertClick(RETENTION_CUTOFF + 1);
+
+    const res = await api(
+      `/api/stats/summary?from=${RETENTION_CUTOFF - 10}&to=${RETENTION_CUTOFF + 100}`,
+    );
+    const body = (await res.json()) as {
+      current: { clicks: number };
+      meta?: Record<string, unknown>;
+    };
+
+    expect(body.current.clicks).toBe(1);
+    expect(body.meta).toStrictEqual({
+      requestedFrom: RETENTION_CUTOFF - 10,
+      effectiveFrom: RETENTION_CUTOFF,
+      retentionCutoff: RETENTION_CUTOFF,
+      truncated: true,
+      uniquesDefinition: "daily-rotating-visitor-hash",
+    });
+  });
+
+  it.each([
+    ["summary", `/api/stats/summary?from=${BASE}&to=${BASE + DAY}`],
+    ["timeseries", `/api/stats/timeseries?from=${BASE}&to=${BASE + DAY}`],
+    ["dimension", `/api/stats/dimension?name=country&from=${BASE}&to=${BASE + DAY}`],
+    ["top links", `/api/stats/top-links?from=${BASE}&to=${BASE + DAY}`],
+  ])("adds non-truncated metadata to %s", async (_label, path) => {
+    const body = (await (await api(path)).json()) as { meta?: Record<string, unknown> };
+    expect(body.meta).toStrictEqual({
+      requestedFrom: BASE,
+      effectiveFrom: BASE,
+      retentionCutoff: RETENTION_CUTOFF,
+      truncated: false,
+      uniquesDefinition: "daily-rotating-visitor-hash",
+    });
+  });
+
   it("returns the current window and the preceding one", async () => {
     await insertClick(BASE + 100);
     await insertClick(BASE + 200);
@@ -66,6 +122,11 @@ describe("GET /api/stats/summary", () => {
 
   it("rejects a missing range", async () => {
     expect((await api("/api/stats/summary")).status).toBe(400);
+  });
+
+  it("rejects an unsafe link id", async () => {
+    const res = await api(`/api/stats/summary?from=${BASE}&to=${BASE + DAY}&linkId=0`);
+    expect(res.status).toBe(400);
   });
 
   it("scopes to one link when linkId is supplied, and covers both when it is not", async () => {

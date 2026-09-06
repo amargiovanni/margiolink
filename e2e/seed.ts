@@ -55,6 +55,8 @@ const REFERERS: (string | null)[] = [
 const CLICK_COUNT = 48;
 const PRIMARY_SLUG = "e2e-primary";
 const ARCHIVED_SLUG = "e2e-archived";
+const PROTECTED_SLUG = "e2e-protected";
+const PROTECTED_PASSWORD = "e2e-link-password";
 
 async function waitForHealth(): Promise<void> {
   const deadline = Date.now() + 30_000;
@@ -176,7 +178,13 @@ async function findLinkBySlug(cookie: string, slug: string): Promise<LinkSummary
  */
 async function ensureLink(
   cookie: string,
-  input: { slug: string; title: string; description?: string; targetUrl: string },
+  input: {
+    slug: string;
+    title: string;
+    description?: string;
+    targetUrl: string;
+    password?: string;
+  },
 ): Promise<LinkSummary> {
   const existing = await findLinkBySlug(cookie, input.slug);
   if (!existing) {
@@ -190,6 +198,7 @@ async function ensureLink(
     targetUrl: input.targetUrl,
     title: input.title,
     description: input.description ?? null,
+    password: input.password,
     isActive: true,
   });
   return updated.link;
@@ -259,6 +268,17 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
   });
   await api(cookie, "DELETE", `/api/links/${archived.id}`);
 
+  // Link 3: a real protected-link form flow. The browser spec intercepts the
+  // external destination so it can prove the POST's 200 HTML handoff starts a
+  // fresh navigation under the response CSP without making a network request
+  // to that destination.
+  await ensureLink(cookie, {
+    targetUrl: "https://example.com/e2e-protected-destination",
+    slug: PROTECTED_SLUG,
+    title: "Protected browser navigation fixture",
+    password: PROTECTED_PASSWORD,
+  });
+
   // Real clicks through the real redirect route — see the module comment for
   // what this can and cannot vary in this environment. These accumulate
   // across repeated runs against the same persistent local D1 rather than
@@ -271,5 +291,5 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
   }
 
   await waitForClicksToLand(cookie, CLICK_COUNT);
-  console.log(`[seed] ready: 2 links, 1 tag, ${CLICK_COUNT} clicks confirmed landed`);
+  console.log(`[seed] ready: 3 links, 1 tag, ${CLICK_COUNT} clicks confirmed landed`);
 }

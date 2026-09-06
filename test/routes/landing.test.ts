@@ -1,5 +1,7 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { SECURITY_HEADERS } from "../../src/lib/security-headers";
+import staticHeaders from "../../web/public/_headers?raw";
 
 /**
  * The public landing page.
@@ -20,6 +22,25 @@ import { describe, expect, it } from "vitest";
 const asset = (path: string) => env.ASSETS.fetch(new URL(path, "https://link.test/"));
 
 describe("the landing document", () => {
+  it("ships the dynamic security policy and immutable hashed-asset caching", () => {
+    for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+      expect(staticHeaders).toContain(`${name}: ${value}`);
+    }
+    expect(staticHeaders).toMatch(
+      /\/assets\/\*[\s\S]*Cache-Control: public, max-age=31536000, immutable/,
+    );
+  });
+
+  it("allows exactly the inline bootstrap script through the CSP hash", async () => {
+    const body = await (await asset("/index.html")).text();
+    const script = body.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    expect(script).toBeDefined();
+
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(script));
+    const encoded = btoa(String.fromCharCode(...new Uint8Array(digest)));
+    expect(SECURITY_HEADERS["Content-Security-Policy"]).toContain(`'sha256-${encoded}'`);
+  });
+
   it("is the asset root's index.html, so the bare domain serves it", async () => {
     const res = await asset("/index.html");
     expect(res.status).toBe(200);

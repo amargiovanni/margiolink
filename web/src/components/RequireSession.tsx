@@ -9,7 +9,13 @@ import { useSessions } from "../lib/queries";
 export function RequireSession({ children }: { children: ReactNode }) {
   const { isPending, error } = useSessions();
 
-  if (isPending) return <div className="p-8 text-ink-muted">Loading…</div>;
+  if (isPending) {
+    return (
+      <div role="status" aria-busy="true" className="p-8 text-ink-muted">
+        Loading…
+      </div>
+    );
+  }
   if (error instanceof ApiError) {
     // Basename-relative. `BrowserRouter basename="/app"` (main.tsx) prepends
     // "/app" itself, so an already-prefixed target resolves to `/app/app/login`

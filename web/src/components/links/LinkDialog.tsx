@@ -4,7 +4,14 @@ import { Dialog } from "../ui/Dialog";
 import { LinkForm } from "./LinkForm";
 
 export type LinkDialogProps =
-  | { mode: "create"; open: boolean; onOpenChange: (open: boolean) => void }
+  | {
+      mode: "create";
+      open: boolean;
+      onOpenChange: (open: boolean) => void;
+      initialValues?: Partial<
+        Pick<Link, "targetUrl" | "title" | "description" | "expiresAt" | "expiredUrl">
+      >;
+    }
   | { mode: "edit"; link: Link; open: boolean; onOpenChange: (open: boolean) => void };
 
 const TOAST_MS = 4000;
@@ -18,6 +25,7 @@ const TOAST_MS = 4000;
 export function LinkDialog(props: LinkDialogProps) {
   const { open, onOpenChange, mode } = props;
   const link = mode === "edit" ? props.link : undefined;
+  const initialValues = mode === "create" ? props.initialValues : undefined;
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -70,7 +78,7 @@ export function LinkDialog(props: LinkDialogProps) {
           content?.querySelector<HTMLElement>("input, textarea, select")?.focus();
         }}
       >
-        <LinkForm mode={mode} link={link} onDone={handleDone} />
+        <LinkForm mode={mode} link={link} initialValues={initialValues} onDone={handleDone} />
       </Dialog>
       {toast && (
         <div

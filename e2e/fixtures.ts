@@ -15,10 +15,12 @@ import { test as base, type Page } from "@playwright/test";
  */
 export const CREDENTIALS = {
   username: process.env.E2E_ADMIN_USER ?? "e2e",
-  password: process.env.E2E_ADMIN_PASSWORD ?? "e2e-password-not-a-secret",
+  password: process.env.E2E_ADMIN_PASSWORD ?? "e2e-7Qm2-vault-9Lp6-river",
 };
 
-export const HASH_SECRET = process.env.E2E_HASH_SECRET ?? "e2e-hash-secret-not-a-secret-00000";
+export const HASH_SECRET =
+  process.env.E2E_HASH_SECRET ??
+  "e2e-7f3a9c1d5b8e2a6c4d0f9b7e3a1c8d6f5b2e9a4c7d1f8b3e6a0c5d9f2b7e4a1";
 
 /** Playwright's own `webServer.url` (playwright.config.ts) and `seed.ts`'s
  *  API calls both need this same origin — centralised here rather than

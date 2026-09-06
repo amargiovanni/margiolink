@@ -64,11 +64,12 @@ describe("LinkRow", () => {
     expect(screen.getByText("0 clicks, last 7 days")).toBeInTheDocument();
   });
 
-  it("offers Edit, QR code, Deactivate and Delete from one reachable menu", async () => {
+  it("offers Edit, Duplicate, QR code, Deactivate and Delete from one reachable menu", async () => {
     stubFetch();
     renderRow([]);
     await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
     expect(await screen.findByRole("menuitem", { name: /edit/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /duplicate/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /qr code/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /deactivate/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /delete/i })).toBeInTheDocument();
@@ -82,6 +83,19 @@ describe("LinkRow", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(screen.getByLabelText(/destination/i)).toHaveValue(LINK.targetUrl);
     expect(screen.getByLabelText(/custom slug/i)).toHaveValue(LINK.slug);
+  });
+
+  it("opens a duplicate with content copied but identity and password cleared", async () => {
+    stubFetch();
+    renderRow([], { ...LINK, description: "Campaign landing" });
+    await userEvent.click(screen.getByRole("button", { name: /actions for launch/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /duplicate/i }));
+
+    expect(await screen.findByRole("dialog", { name: /new link/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/destination/i)).toHaveValue(LINK.targetUrl);
+    expect(screen.getByLabelText(/custom slug/i)).toHaveValue("");
+    expect(screen.getByLabelText(/description/i)).toHaveValue("Campaign landing");
+    expect(screen.getByLabelText(/^password/i)).toHaveValue("");
   });
 
   it("puts default focus on the first field when the edit dialog opens, not the × close button", async () => {

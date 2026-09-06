@@ -293,8 +293,9 @@ function toCountryPaths(topologyModule: unknown): CountryPath[] {
  * chunk — loaded lazily, so pages that never show this component never pay
  * for it — has resolved. A reader on a slow connection or with the chunk
  * blocked still gets every number the map would have shown. */
-export function WorldMap({ slices }: { slices: CountrySlice[] }) {
+export function WorldMap({ slices, listLimit }: { slices: CountrySlice[]; listLimit?: number }) {
   const [countries, setCountries] = useState<CountryPath[] | null>(null);
+  const [mapError, setMapError] = useState(false);
   // There is nothing to colour when `slices` is empty, so there is nothing
   // worth downloading 40KB of atlas for either. This is the *only* signal
   // this component has of "is there real data" — `slices` carries no
@@ -315,10 +316,15 @@ export function WorldMap({ slices }: { slices: CountrySlice[] }) {
   useEffect(() => {
     if (!hasData) return;
     let cancelled = false;
-    import("world-atlas/countries-110m.json").then((topologyModule) => {
-      if (cancelled) return;
-      setCountries(toCountryPaths(topologyModule));
-    });
+    setMapError(false);
+    import("world-atlas/countries-110m.json")
+      .then((topologyModule) => {
+        if (cancelled) return;
+        setCountries(toCountryPaths(topologyModule));
+      })
+      .catch(() => {
+        if (!cancelled) setMapError(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -340,16 +346,22 @@ export function WorldMap({ slices }: { slices: CountrySlice[] }) {
   }
 
   return (
-    <div className="flex flex-col gap-6 md:flex-row md:items-start">
-      <div className="md:w-2/5 md:shrink-0">
-        <RankedBars slices={slices} label="Clicks by country" />
+    <div className="flex flex-col gap-7 xl:flex-row xl:items-center">
+      <div className="xl:w-2/5 xl:shrink-0">
+        <RankedBars slices={slices} label="Clicks by country" limit={listLimit} />
       </div>
+
+      {mapError ? (
+        <p role="status" className="text-sm text-ink-muted">
+          Map unavailable. The country list is still available.
+        </p>
+      ) : null}
 
       {/* Purely decorative on top of already-accessible data: the list above
           is this chart's one accessible entry point, same reasoning as the
           time series' hidden-from-AT <svg> plot. */}
       {countries && slices.length > 0 ? (
-        <svg aria-hidden="true" viewBox={VIEW_BOX} className="w-full md:w-3/5">
+        <svg aria-hidden="true" viewBox={VIEW_BOX} className="w-full xl:w-3/5">
           {countries.map((country) => {
             const clicks = clicksFor(country.id);
             return (

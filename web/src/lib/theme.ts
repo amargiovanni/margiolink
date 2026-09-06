@@ -28,6 +28,14 @@ export function applyTheme(theme: Theme): void {
   const root = document.documentElement;
   if (theme === "system") root.removeAttribute("data-theme");
   else root.setAttribute("data-theme", theme);
+
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (meta) {
+    const dark =
+      theme === "dark" ||
+      (theme === "system" && window.matchMedia?.("(prefers-color-scheme: dark)").matches);
+    meta.content = dark ? "#12100e" : "#faf7f2";
+  }
 }
 
 /** System, Light or Dark. "System" removes the stamp entirely so the media

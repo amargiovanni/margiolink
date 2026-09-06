@@ -34,6 +34,22 @@ describe("WorldMap", () => {
     expect(screen.getByText("FR")).toBeInTheDocument();
   });
 
+  it("can bound the ranked list without dropping countries from the map", async () => {
+    const manySlices = [
+      ...slices,
+      { value: "DE", clicks: 30, uniques: 24 },
+      { value: "GB", clicks: 20, uniques: 18 },
+    ];
+    const { container } = render(<WorldMap slices={manySlices} listLimit={2} />);
+
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByText(/showing top 2 of 4/i)).toBeInTheDocument();
+    await waitFor(() => expect(container.querySelector("svg")).toBeInTheDocument());
+    expect(container.querySelector('[data-country="276"] title')).toHaveTextContent(
+      "Germany: 30 clicks",
+    );
+  });
+
   it("says so plainly when there is nothing to plot", () => {
     render(<WorldMap slices={[]} />);
     expect(screen.getByText(/no data/i)).toBeInTheDocument();

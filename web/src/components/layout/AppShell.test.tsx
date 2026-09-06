@@ -31,6 +31,22 @@ describe("AppShell", () => {
     expect(screen.getByRole("navigation", { name: /primary/i })).toBeInTheDocument();
   });
 
+  it("keeps exactly one primary navigation landmark", () => {
+    renderShell();
+    expect(screen.getAllByRole("navigation", { name: /primary/i })).toHaveLength(1);
+  });
+
+  it("offers the global creation path and command hint", () => {
+    renderShell();
+    expect(screen.getByRole("link", { name: /new link/i })).toHaveAttribute("href", "/links?new=1");
+    expect(screen.getByText(/command menu/i)).toBeInTheDocument();
+  });
+
+  it("does not duplicate the global creation link on the links workspace", () => {
+    renderShell("/links");
+    expect(screen.queryByRole("link", { name: /new link/i })).not.toBeInTheDocument();
+  });
+
   it("links to every section", () => {
     renderShell();
     const nav = screen.getByRole("navigation", { name: /primary/i });
@@ -46,6 +62,14 @@ describe("AppShell", () => {
       "aria-current",
       "page",
     );
+  });
+
+  it("does not leave the active item with the rail's muted text colour", () => {
+    renderShell("/links");
+    const active = screen.getByRole("link", { name: /links/i });
+
+    expect(active).toHaveClass("text-accent-ink");
+    expect(active).not.toHaveClass("text-rail-muted");
   });
 
   it("renders its children inside main", () => {

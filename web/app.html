@@ -4,7 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#12100e" />
     <title>MargioLink</title>
+    <script>
+      try {
+        const stored = localStorage.getItem("margiolink:theme");
+        if (stored === "dark" || stored === "light") {
+          document.documentElement.setAttribute("data-theme", stored);
+        }
+        const dark = stored === "dark" || (stored !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#12100e" : "#faf7f2");
+      } catch {
+        // Storage and media preferences are optional; CSS still selects a theme.
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -46,12 +46,19 @@ describe("isValidSlugShape", () => {
  *  redirecting, with no request reaching any code that could explain why, so
  *  the documents the build produces and this list have to stay in step. */
 describe("isReservedSlug", () => {
-  it.each(["app", "index", "api", "privacy", "assets", "robots.txt", "favicon.ico", "_health"])(
-    "reserves %s",
-    (slug) => {
-      expect(isReservedSlug(slug)).toBe(true);
-    },
-  );
+  it.each([
+    "app",
+    "index",
+    "api",
+    "privacy",
+    "assets",
+    "robots.txt",
+    "favicon.ico",
+    "_health",
+    "_ready",
+  ])("reserves %s", (slug) => {
+    expect(isReservedSlug(slug)).toBe(true);
+  });
 
   it("is case-insensitive", () => {
     expect(isReservedSlug("APP")).toBe(true);

@@ -21,7 +21,7 @@ export function ThemeToggle() {
         <button
           type="button"
           aria-label="Theme"
-          className="flex items-center gap-2 rounded border border-rule px-2 py-1 text-sm text-ink-muted hover:text-ink"
+          className="flex h-10 items-center gap-2 rounded-xl border border-rule bg-surface-raised/80 px-3 text-sm text-ink-muted shadow-sm transition-all hover:-translate-y-0.5 hover:border-rule-strong hover:text-ink"
         >
           <current.Icon className="size-4" />
           <span className="sr-only lg:not-sr-only">{current.label}</span>
@@ -30,7 +30,7 @@ export function ThemeToggle() {
       <DropdownMenu.Portal>
         <DropdownMenu.Content
           align="end"
-          className="min-w-40 rounded border border-rule bg-surface-raised p-1 shadow-lg"
+          className="z-50 min-w-40 rounded-xl border border-rule bg-surface-raised p-1.5 shadow-2xl"
         >
           <DropdownMenu.RadioGroup
             value={theme}
@@ -40,7 +40,7 @@ export function ThemeToggle() {
               <DropdownMenu.RadioItem
                 key={option.value}
                 value={option.value}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-ink outline-none data-[highlighted]:bg-surface-sunken"
+                className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-ink outline-none data-[highlighted]:bg-surface-soft"
               >
                 <option.Icon className="size-4" />
                 <span className="flex-1">{option.label}</span>

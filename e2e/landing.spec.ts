@@ -35,7 +35,7 @@ test.describe("the landing page", () => {
 
     // The shell would have an empty <div id="root"> and nothing else; the
     // landing has its content in the markup.
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Count the click");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Small links.");
     await expect(page.locator("#root")).toHaveCount(0);
   });
 
@@ -65,6 +65,17 @@ test.describe("the landing page", () => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
 
+    // Lazy product images are requested only when near the viewport.
+    for (const image of await page.locator("img").all()) {
+      await image.scrollIntoViewIfNeeded();
+      await expect
+        .poll(() =>
+          image.evaluate(
+            (node) => node instanceof HTMLImageElement && node.complete && node.naturalWidth > 0,
+          ),
+        )
+        .toBe(true);
+    }
     const broken = await page.evaluate(() =>
       [...document.querySelectorAll("img")]
         .filter((image) => !image.complete || image.naturalWidth === 0)
@@ -159,7 +170,7 @@ async function assertHeadingContract(page: Page, label: string): Promise<void> {
 }
 
 for (const theme of ["light", "dark"] as const) {
-  test(`the landing page is accessible in the ${theme} theme`, async ({ page }) => {
+  test(`the landing page is accessible in the ${theme} theme`, async ({ page }, testInfo) => {
     await page.addInitScript(
       ([key, value]) => {
         try {
@@ -174,9 +185,7 @@ for (const theme of ["light", "dark"] as const) {
 
     await page.goto("/");
     await page.waitForLoadState("networkidle");
-    // Reveal animations run on intersection; scrolling to the end means axe
-    // measures contrast on sections that have finished arriving rather than
-    // on transparent ones.
+    // Exercise the whole page before auditing and capturing the final layout.
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.waitForTimeout(800);
 
@@ -187,5 +196,99 @@ for (const theme of ["light", "dark"] as const) {
 
     expect(serious, formatViolations(serious, `landing/${theme}`)).toEqual([]);
     await assertHeadingContract(page, `landing/${theme}`);
+    for (const image of await page.locator("img").all()) {
+      await image.scrollIntoViewIfNeeded();
+      await expect
+        .poll(() =>
+          image.evaluate(
+            (node) => node instanceof HTMLImageElement && node.complete && node.naturalWidth > 0,
+          ),
+        )
+        .toBe(true);
+    }
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.screenshot({
+      path: testInfo.outputPath(`landing-${theme}.jpg`),
+      fullPage: true,
+      type: "jpeg",
+      quality: 85,
+    });
   });
 }
+
+for (const width of [320, 390, 768, 900, 1440]) {
+  test(`keeps the landing and its actions within a ${width}px viewport`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+    await page.evaluate(() => document.fonts.ready);
+    const main = page.getByRole("main");
+    await expect(main.getByRole("link", { name: "Make it yours", exact: true })).toBeVisible();
+    await expect(main.getByRole("link", { name: "Take a closer look" })).toBeVisible();
+    for (const id of ["main", "dashboard", "features", "record", "run", "open"]) {
+      const section = page.locator(`#${id}`);
+      await section.scrollIntoViewIfNeeded();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        width,
+      );
+      const box = await section.boundingBox();
+      if (!box) throw new Error(`${id} has no rendered box`);
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+    }
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.screenshot({
+      path: testInfo.outputPath(`landing-${width}.jpg`),
+      fullPage: true,
+      type: "jpeg",
+      quality: 85,
+    });
+    if (width === 390 || width === 1440) {
+      await page.locator(".wordmark").scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: testInfo.outputPath(`landing-${width}-hero.jpg`),
+        type: "jpeg",
+        quality: 85,
+      });
+    }
+  });
+}
+
+test.describe("the landing without JavaScript", () => {
+  test.use({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
+  test("keeps its copy, artwork and setup navigation usable", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Small links.");
+    await expect(page.locator(".hero-copy")).toHaveCSS("opacity", "1");
+    await expect(page.getByRole("button", { name: /theme/i })).toBeHidden();
+    await page.getByRole("main").getByRole("link", { name: "Make it yours", exact: true }).click();
+    await expect(page).toHaveURL(/#run$/);
+    await expect(page.locator("#run")).toBeVisible();
+    await expect(page.locator("#run")).toHaveCSS("opacity", "1");
+    await expect(page.getByRole("link", { name: "Read the setup guide" })).toHaveAttribute(
+      "href",
+      /#deploying-your-own$/,
+    );
+  });
+});
+
+test("respects reduced motion and keeps every section visible if the module fails", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  let blocked = false;
+  await page.route(/\/assets\/landing-[^/]+\.js$/, (route) => {
+    blocked = true;
+    return route.abort();
+  });
+  await page.goto("/");
+  await expect.poll(() => blocked).toBe(true);
+  const sections = await page.locator(".reveal").all();
+  expect(sections.length).toBeGreaterThan(0);
+  for (const section of sections) {
+    await section.scrollIntoViewIfNeeded();
+    await expect(section).toHaveCSS("opacity", "1");
+    await expect(section).toHaveCSS("animation-name", "none");
+  }
+});

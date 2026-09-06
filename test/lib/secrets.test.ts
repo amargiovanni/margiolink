@@ -2,7 +2,11 @@ import { createExecutionContext, env, waitOnExecutionContext } from "cloudflare:
 import { beforeEach, describe, expect, it } from "vitest";
 import { createLink } from "../../src/db/links";
 import { app } from "../../src/index";
-import { MIN_HASH_SECRET_LENGTH, requireHashSecret } from "../../src/lib/secrets";
+import {
+  MIN_HASH_SECRET_LENGTH,
+  requireAdminPassword,
+  requireHashSecret,
+} from "../../src/lib/secrets";
 import type { Env } from "../../src/types";
 
 const NOW = Math.floor(Date.parse("2026-09-01T00:00:00Z") / 1000);
@@ -21,6 +25,7 @@ async function fetchWith(secret: string | undefined, request: Request): Promise<
 }
 
 const TOO_SHORT = "a".repeat(MIN_HASH_SECRET_LENGTH - 1);
+const VALID_SECRET = "8f4c2e91a7d6b3c0e5f8291d4a6b7c8e9f0a1b2c3d4e5f60718293a4b5c6d7e8";
 
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM clicks").run();
@@ -37,13 +42,25 @@ describe("requireHashSecret", () => {
     expect(() => requireHashSecret(envWith(TOO_SHORT))).toThrow(/HASH_SECRET/);
   });
 
-  it("returns a secret of at least the minimum length", () => {
-    const secret = "b".repeat(MIN_HASH_SECRET_LENGTH);
-    expect(requireHashSecret(envWith(secret))).toBe(secret);
+  it.each([
+    "change-me-locally",
+    "a-long-random-string-used-for-visitor-hashing",
+    "a".repeat(MIN_HASH_SECRET_LENGTH),
+  ])("rejects weak or example secret %s", (secret) => {
+    expect(() => requireHashSecret(envWith(secret))).toThrow(/weak|example/i);
+  });
+
+  it("returns a sufficiently random secret", () => {
+    expect(requireHashSecret(envWith(VALID_SECRET))).toBe(VALID_SECRET);
   });
 
   it("requires at least 32 characters", () => {
     expect(MIN_HASH_SECRET_LENGTH).toBe(32);
+  });
+
+  it("rejects a demo administrator password", () => {
+    const testEnv = { ...envWith(VALID_SECRET), ADMIN_PASSWORD: "demo-password-not-a-secret" };
+    expect(() => requireAdminPassword(testEnv)).toThrow(/weak|example/i);
   });
 });
 

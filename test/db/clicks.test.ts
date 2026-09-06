@@ -1,7 +1,8 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { deleteClicksBefore } from "../../src/db/clicks";
+import { deleteClicksBefore, insertClick } from "../../src/db/clicks";
 import { createLink } from "../../src/db/links";
+import { buildRequestContext } from "../../src/lib/request-context";
 
 const NOW = Date.parse("2026-09-01T00:00:00Z") / 1000;
 const DAY = 86_400;
@@ -37,6 +38,37 @@ beforeEach(async () => {
   await env.DB.prepare("DELETE FROM click_daily").run();
   await env.DB.prepare("DELETE FROM links").run();
   linkId = (await createLink(env.DB, { slug: "batch", targetUrl: "https://e.com" }, NOW)).id;
+});
+
+describe("insertClick", () => {
+  it("leaves legacy UTM term and content columns empty", async () => {
+    const context = buildRequestContext(
+      new Request(
+        "https://link.test/batch?utm_source=newsletter&utm_medium=email&utm_campaign=launch&utm_term=person&utm_content=hero",
+      ),
+    );
+
+    await insertClick(env.DB, {
+      linkId,
+      ts: NOW,
+      visitorHash: "visitor",
+      source: context.source,
+      outcome: "redirect",
+      isBot: false,
+      geo: context.geo,
+      client: context.client,
+      referrer: context.referrer,
+      utm: context.utm,
+    });
+
+    const row = await env.DB.prepare("SELECT utm_source, utm_term, utm_content FROM clicks").first<{
+      utm_source: string | null;
+      utm_term: string | null;
+      utm_content: string | null;
+    }>();
+
+    expect(row).toEqual({ utm_source: "newsletter", utm_term: null, utm_content: null });
+  });
 });
 
 describe("deleteClicksBefore", () => {

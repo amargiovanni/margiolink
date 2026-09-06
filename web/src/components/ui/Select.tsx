@@ -43,7 +43,7 @@ export function Select({
       <RadixSelect.Trigger
         id={id}
         className={cn(
-          "flex items-center justify-between gap-2 rounded border border-rule bg-surface px-3 py-2 text-sm text-ink data-[placeholder]:text-ink-faint",
+          "flex min-h-11 items-center justify-between gap-2 rounded-xl border border-rule bg-surface-raised px-3 py-2 text-sm text-ink shadow-sm transition-colors hover:border-rule-strong data-[placeholder]:text-ink-faint",
           className,
         )}
         {...triggerProps}
@@ -54,13 +54,13 @@ export function Select({
         </RadixSelect.Icon>
       </RadixSelect.Trigger>
       <RadixSelect.Portal>
-        <RadixSelect.Content className="overflow-hidden rounded border border-rule bg-surface-raised shadow-lg">
+        <RadixSelect.Content className="z-50 overflow-hidden rounded-xl border border-rule bg-surface-raised shadow-2xl">
           <RadixSelect.Viewport className="p-1">
             {options.map((option) => (
               <RadixSelect.Item
                 key={option.value}
                 value={option.value}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-ink data-[highlighted]:bg-surface-sunken"
+                className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-ink outline-none data-[highlighted]:bg-surface-soft"
               >
                 <RadixSelect.ItemText>{option.label}</RadixSelect.ItemText>
                 <RadixSelect.ItemIndicator className="ml-auto">

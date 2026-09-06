@@ -21,6 +21,18 @@ describe("ChartFrame", () => {
     expect(screen.getByRole("heading", { name: "Clicks by country" })).toBeInTheDocument();
   });
 
+  it("can sit below a page section with a third-level heading", () => {
+    render(
+      <ChartFrame title="Clicks by country" headingLevel={3} table={table} status="success">
+        <svg aria-hidden="true" />
+      </ChartFrame>,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Clicks by country", level: 3 }),
+    ).toBeInTheDocument();
+  });
+
   it("offers a table view for every chart", async () => {
     render(
       <ChartFrame title="Clicks by country" table={table} status="success">

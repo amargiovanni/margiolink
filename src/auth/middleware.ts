@@ -5,6 +5,7 @@ import type { Env } from "../types";
 import { SESSION_COOKIE } from "./session";
 
 export type AuthedVariables = { sessionId: string };
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export const requireSession: MiddlewareHandler<{
   Bindings: Env;
@@ -21,5 +22,14 @@ export const requireSession: MiddlewareHandler<{
   }
 
   c.set("sessionId", session.id);
+  c.header("Cache-Control", "private, no-store");
+
+  if (MUTATING_METHODS.has(c.req.method)) {
+    const origin = c.req.header("origin");
+    if (origin !== undefined && origin !== new URL(c.req.url).origin) {
+      return c.json({ error: "invalid_origin" }, 403);
+    }
+  }
+
   await next();
 };

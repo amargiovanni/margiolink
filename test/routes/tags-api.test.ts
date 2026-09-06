@@ -156,4 +156,10 @@ describe("tags", () => {
     expect(body.links).toEqual([]);
     expect(body.total).toBe(0);
   });
+
+  it("rejects a non-positive tag id", async () => {
+    const res = await api("/api/tags/0", { method: "DELETE" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_id" });
+  });
 });

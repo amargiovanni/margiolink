@@ -7,7 +7,18 @@
   // this one date so the suite exercises the same compatibility surface as the
   // deploy. Raise it once the test runner ships a newer pinned runtime.
   "compatibility_date": "2026-08-22",
-  "observability": { "enabled": true },
+  // Keep operational events queryable in Workers Logs. The application emits
+  // JSON events for readiness and scheduled-job backlogs; this low-volume
+  // service keeps full request sampling so those signals are not probabilistic.
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+      "persist": true
+    }
+  },
   "vars": {
     "SHORT_DOMAIN": "link.margio.uk",
     "RAW_RETENTION_DAYS": "180"

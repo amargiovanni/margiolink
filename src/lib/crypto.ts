@@ -1,4 +1,8 @@
-const PBKDF2_ITERATIONS = 100_000;
+const LEGACY_PBKDF2_ITERATIONS = 100_000;
+const PBKDF2_ITERATIONS = 600_000;
+const PASSWORD_HASH_PREFIX = `pbkdf2-sha256$${PBKDF2_ITERATIONS}$`;
+const HEX_32_BYTES = /^[0-9a-f]{64}$/;
+const HEX_16_BYTES = /^[0-9a-f]{32}$/;
 const encoder = new TextEncoder();
 
 function toHex(buffer: ArrayBuffer): string {
@@ -73,7 +77,11 @@ export async function constantTimeEquals(a: string, b: string): Promise<boolean>
   return crypto.subtle.timingSafeEqual(digestA, digestB);
 }
 
-export async function hashPassword(password: string, saltHex: string): Promise<string> {
+async function derivePassword(
+  password: string,
+  saltHex: string,
+  iterations: number,
+): Promise<string> {
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
     encoder.encode(password),
@@ -85,7 +93,7 @@ export async function hashPassword(password: string, saltHex: string): Promise<s
     {
       name: "PBKDF2",
       salt: fromHex(saltHex),
-      iterations: PBKDF2_ITERATIONS,
+      iterations,
       hash: "SHA-256",
     },
     keyMaterial,
@@ -94,11 +102,35 @@ export async function hashPassword(password: string, saltHex: string): Promise<s
   return toHex(bits);
 }
 
+export async function hashPassword(password: string, saltHex: string): Promise<string> {
+  if (!HEX_16_BYTES.test(saltHex)) {
+    throw new Error("Password salt must be 16 bytes of lowercase hex");
+  }
+  const digest = await derivePassword(password, saltHex, PBKDF2_ITERATIONS);
+  return `${PASSWORD_HASH_PREFIX}${digest}`;
+}
+
 export async function verifyPassword(
   password: string,
   saltHex: string,
-  expectedHex: string,
+  encodedHash: string,
 ): Promise<boolean> {
-  const actual = await hashPassword(password, saltHex);
-  return constantTimeEquals(actual, expectedHex);
+  if (!HEX_16_BYTES.test(saltHex)) return false;
+
+  let iterations: number;
+  let expectedDigest: string;
+  if (HEX_32_BYTES.test(encodedHash)) {
+    iterations = LEGACY_PBKDF2_ITERATIONS;
+    expectedDigest = encodedHash;
+  } else if (encodedHash.startsWith(PASSWORD_HASH_PREFIX)) {
+    const digest = encodedHash.slice(PASSWORD_HASH_PREFIX.length);
+    if (!HEX_32_BYTES.test(digest)) return false;
+    iterations = PBKDF2_ITERATIONS;
+    expectedDigest = digest;
+  } else {
+    return false;
+  }
+
+  const actual = await derivePassword(password, saltHex, iterations);
+  return constantTimeEquals(actual, expectedDigest);
 }

@@ -5,6 +5,7 @@ let cookie = "";
 
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM links").run();
+  await env.DB.prepare("DELETE FROM link_creation_reservations").run();
   await env.DB.prepare("DELETE FROM admin_sessions").run();
 
   const res = await SELF.fetch("https://link.test/api/auth/login", {
@@ -15,11 +16,11 @@ beforeEach(async () => {
   cookie = (res.headers.get("set-cookie") ?? "").split(";")[0] as string;
 });
 
-function create() {
+function create(slug?: string) {
   return SELF.fetch("https://link.test/api/links", {
     method: "POST",
     headers: { "content-type": "application/json", cookie },
-    body: JSON.stringify({ targetUrl: "https://example.com" }),
+    body: JSON.stringify({ targetUrl: "https://example.com", ...(slug ? { slug } : {}) }),
   });
 }
 
@@ -61,5 +62,17 @@ describe("POST /api/links rate limiting", () => {
     await env.DB.prepare("UPDATE links SET deleted_at = ?").bind(now).run();
 
     expect((await create()).status).toBe(429);
+  });
+
+  it("does not exceed the limit when creations arrive concurrently", async () => {
+    await seedLinks(119, Math.floor(Date.now() / 1000));
+    const responses = await Promise.all(
+      Array.from({ length: 5 }, (_, index) => create(`parallel-${index}`)),
+    );
+    const created = responses.filter((response) => response.status === 201);
+    const limited = responses.filter((response) => response.status === 429);
+
+    expect(created).toHaveLength(1);
+    expect(limited).toHaveLength(4);
   });
 });

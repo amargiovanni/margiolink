@@ -25,8 +25,10 @@ export type ButtonProps = ButtonBaseProps &
   ({ children: string; "aria-label"?: string } | { children: ReactNode; "aria-label": string });
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: "bg-accent text-accent-ink hover:opacity-90",
-  ghost: "border border-rule bg-transparent text-ink hover:bg-surface-raised",
+  primary:
+    "bg-accent text-accent-ink shadow-[0_8px_22px_color-mix(in_srgb,var(--color-accent)_20%,transparent)] hover:-translate-y-0.5 hover:brightness-105",
+  ghost:
+    "border border-rule bg-surface-raised/55 text-ink hover:-translate-y-0.5 hover:border-rule-strong hover:bg-surface-raised",
   // No token pairs `critical` with an accessible on-fill text colour the way
   // `accent-ink` pairs with `accent`, so danger stays an outline treatment
   // (critical border and text on the ambient surface) rather than a solid
@@ -36,8 +38,8 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
-  sm: "gap-1.5 rounded px-3 py-1.5 text-sm",
-  md: "gap-2 rounded px-4 py-2 text-sm",
+  sm: "min-h-9 gap-1.5 rounded-lg px-3 py-1.5 text-sm",
+  md: "min-h-11 gap-2 rounded-xl px-4 py-2 text-sm",
 };
 
 /** Always a real `<button>` — never a styled div or anchor — so focus,
@@ -55,7 +57,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       aria-busy={loading || undefined}
       disabled={disabled || loading}
       className={cn(
-        "inline-flex items-center justify-center font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+        "inline-flex items-center justify-center font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60",
         VARIANT_CLASSES[variant],
         SIZE_CLASSES[size],
         className,

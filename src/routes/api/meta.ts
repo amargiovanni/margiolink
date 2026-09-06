@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { requireSession } from "../../auth/middleware";
+import { version } from "../../../package.json";
+import { requireRetentionDays } from "../../lib/config";
 import type { Env } from "../../types";
 
 /**
@@ -22,11 +23,11 @@ import type { Env } from "../../types";
  */
 export const meta = new Hono<{ Bindings: Env; Variables: { sessionId: string } }>();
 
-meta.use("*", requireSession);
-
-meta.get("/", (c) =>
-  c.json({
-    retentionDays: Number(c.env.RAW_RETENTION_DAYS),
+meta.get("/", (c) => {
+  c.header("X-MargioLink-Version", version);
+  return c.json({
+    retentionDays: requireRetentionDays(c.env.RAW_RETENTION_DAYS),
     shortDomain: c.env.SHORT_DOMAIN,
-  }),
-);
+    version,
+  });
+});

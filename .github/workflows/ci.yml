@@ -19,9 +19,9 @@ jobs:
     name: Lint, types, tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -32,6 +32,12 @@ jobs:
       - name: Lint and format
         run: npm run check
 
+      - name: Check repository whitespace
+        run: git diff --check
+
+      - name: Audit dependencies
+        run: npm audit --omit=optional --audit-level=high
+
       - name: Type check
         run: npm run typecheck
 
@@ -41,7 +47,10 @@ jobs:
       # is why this passed locally and 404'd here for three runs before
       # anyone looked at the CI log.
       - name: Build the dashboard
-        run: npm run build:web
+        run: npm run build:verify
+
+      - name: Test the build budget checker
+        run: npm run test:build-budget
 
       # Runs inside workerd against a real local D1 database. No Cloudflare
       # credentials and no .dev.vars are needed: the test bindings live in
@@ -53,9 +62,9 @@ jobs:
     name: End-to-end
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -80,20 +89,36 @@ jobs:
 
       - run: npm run e2e
 
-      - uses: actions/upload-artifact@v4
-        if: failure()
+      - name: Save landing previews
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: success()
         with:
-          name: playwright-report
-          path: playwright-report/
+          name: landing-previews
+          # Playwright's output directory is hidden; the glob includes only preview JPEGs.
+          path: e2e/.artifacts/**/landing-*.jpg
+          include-hidden-files: true
           retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload Playwright diagnostics
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ failure() }}
+        with:
+          name: playwright-diagnostics
+          path: |
+            playwright-report/
+            e2e/.artifacts/
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: warn
 
   migrations:
     name: Migration rollback
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -105,3 +130,14 @@ jobs:
       # a working down file fails here rather than in production.
       - name: Verify the newest migration is reversible
         run: npm run db:verify-rollback
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0

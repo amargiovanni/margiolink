@@ -1,9 +1,21 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { generateDemoData } from "../scripts/demo-data.mjs";
-import { buildSeedStatements, CLICK_COLUMNS, ROLLUP_DIMENSIONS } from "../scripts/demo-sql.mjs";
+import {
+  buildSeedStatements,
+  CLICK_COLUMNS,
+  ROLLUP_DIMENSIONS,
+  SENSITIVE_ROLLUP_DIMENSIONS,
+} from "../scripts/demo-sql.mjs";
+import { hashPasswordForSeed } from "../scripts/password-hash.mjs";
 import { rollupDay } from "../src/cron/rollup";
-import { DIMENSION_COLUMNS, summary, timeseries, topLinks } from "../src/db/stats";
+import {
+  DIMENSION_COLUMNS,
+  SENSITIVE_DIMENSIONS,
+  summary,
+  timeseries,
+  topLinks,
+} from "../src/db/stats";
 
 /**
  * The demo seed, tested against a real D1 rather than by reading it.
@@ -53,6 +65,12 @@ async function rows<T>(sql: string): Promise<T[]> {
 }
 
 describe("the demo dataset", () => {
+  it("uses the same versioned password encoding as production", async () => {
+    const hash = await hashPasswordForSeed("demo-password", "5eed5eed5eed5eed5eed5eed5eed5eed");
+
+    expect(hash).toMatch(/^pbkdf2-sha256\$600000\$[0-9a-f]{64}$/);
+  });
+
   it("is deterministic — the same arguments produce byte-identical rows", () => {
     expect(JSON.stringify(seed())).toBe(JSON.stringify(seed()));
   });
@@ -119,6 +137,12 @@ describe("the demo dataset", () => {
     }
   });
 
+  it("does not populate retired free-form UTM term or content fields", () => {
+    const { clicks } = seed();
+    expect(new Set(clicks.map((click) => click.utmTerm))).toEqual(new Set([null]));
+    expect(new Set(clicks.map((click) => click.utmContent))).toEqual(new Set([null]));
+  });
+
   it("leaves the links in the states the dashboard has filters for", () => {
     const { links } = seed();
     expect(links.some((link) => link.deletedAt !== null)).toBe(true);
@@ -157,6 +181,7 @@ describe("the seed's columns and the schema", () => {
 
   it("aggregates exactly the dimensions the rollup and the stats API know about", () => {
     expect(ROLLUP_DIMENSIONS).toEqual(DIMENSION_COLUMNS);
+    expect([...SENSITIVE_ROLLUP_DIMENSIONS].sort()).toEqual([...SENSITIVE_DIMENSIONS].sort());
   });
 });
 

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { formatRelative } from "../../lib/format";
 import { useLive } from "../../lib/queries";
 import { Button } from "../ui/Button";
+import { RetryButton } from "../ui/RetryButton";
 
 const CHANNEL_LABEL: Record<string, string> = {
   direct: "Direct",
@@ -81,11 +82,14 @@ export function LiveFeed({ linkId }: { linkId: number }) {
       </div>
 
       {query.isError ? (
-        <p role="alert" className="text-sm text-critical">
-          Live feed unavailable. Try again.
-        </p>
+        <div role="alert" className="flex items-center gap-3 text-sm text-critical">
+          <span>Live feed unavailable.</span>
+          <RetryButton onRetry={() => void query.refetch()} loading={query.isFetching} />
+        </div>
       ) : query.isPending ? (
-        <p className="text-sm text-ink-muted">Loading recent activity…</p>
+        <p role="status" aria-busy="true" className="text-sm text-ink-muted">
+          Loading recent activity…
+        </p>
       ) : clicks.length === 0 ? (
         <p className="text-sm text-ink-faint">No recent activity.</p>
       ) : (

@@ -5,7 +5,13 @@ export interface TableData {
 
 export function TableView({ columns, rows, caption }: TableData & { caption: string }) {
   return (
-    <div className="max-h-80 overflow-auto">
+    <section
+      aria-label={`${caption} data table`}
+      // A named, overflowed table needs its own focus stop for keyboard scrolling.
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: WCAG 2.1.1 requires focus on scroll containers
+      tabIndex={0}
+      className="max-h-80 overflow-auto overscroll-contain"
+    >
       <table className="w-full text-sm">
         <caption className="sr-only">{caption}</caption>
         <thead className="sticky top-0 bg-surface-raised">
@@ -49,6 +55,6 @@ export function TableView({ columns, rows, caption }: TableData & { caption: str
           })}
         </tbody>
       </table>
-    </div>
+    </section>
   );
 }

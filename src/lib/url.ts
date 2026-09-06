@@ -5,6 +5,10 @@ export type UrlValidation =
 const MAX_LENGTH = 2048;
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
 
+function normaliseHostname(hostname: string): string {
+  return hostname.trim().toLowerCase().replace(/\.+$/, "");
+}
+
 export function validateTargetUrl(input: string, shortDomain: string): UrlValidation {
   const trimmed = input.trim();
 
@@ -27,7 +31,7 @@ export function validateTargetUrl(input: string, shortDomain: string): UrlValida
     return { ok: false, error: "invalid" };
   }
 
-  if (parsed.hostname.toLowerCase() === shortDomain.toLowerCase()) {
+  if (normaliseHostname(parsed.hostname) === normaliseHostname(shortDomain)) {
     return { ok: false, error: "self_reference" };
   }
 
