@@ -58,7 +58,7 @@
     "date-fns": "^4.4.0",
     "hono": "^4.13.5",
     "isbot": "^5.2.2",
-    "lucide-react": "^1.39.0",
+    "lucide-react": "^1.41.0",
     "qrcode-generator": "^2.0.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
